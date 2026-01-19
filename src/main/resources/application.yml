@@ -1,0 +1,68 @@
+spring:
+  application:
+    name: pikabu-download-bot
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/pikabu_bot}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.pikabu.bot: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+telegram:
+  bot:
+    token: ${BOT_TOKEN}
+    username: ${BOT_USERNAME}
+
+app:
+  admin:
+    user-id: ${ADMIN_USER_ID}
+    enable-notifications: ${ADMIN_ENABLE_NOTIFICATIONS:true}
+    enable-daily-digest: ${ADMIN_ENABLE_DAILY_DIGEST:false}
+  max-concurrent-downloads: ${APP_MAX_CONCURRENT_DOWNLOADS:5}
+  rate-limit:
+    max-requests: ${APP_RATE_LIMIT_MAX_REQUESTS:1000}
+    window-hours: ${APP_RATE_LIMIT_WINDOW_HOURS:1}
+  download:
+    max-size-mb: 500
+    timeout-minutes: 5
+    max-retries: 3
+  error-monitoring:
+    parsing-error-threshold: 5
+    parsing-error-window-minutes: 10
+    download-error-threshold: 10
+    download-error-window-minutes: 15
+    check-interval-minutes: 5
