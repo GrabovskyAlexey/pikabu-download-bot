@@ -35,6 +35,7 @@ dependencies {
 
     // Telegram Bot
     implementation("org.telegram:telegrambots-springboot-longpolling-starter:9.2.0")
+    implementation("org.telegram:telegrambots-client:9.2.0")
 
     // HTTP Client - Ktor
     implementation("io.ktor:ktor-client-core:3.3.1")
