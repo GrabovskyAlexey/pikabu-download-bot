@@ -86,7 +86,7 @@ class TelegramSenderService(
                 caption?.let { this.caption = it }
             }
             telegramClient.execute(sendVideo)
-            logger.info { "Video sent to chat $chatId" }
+            logger.debug { "Video sent to chat $chatId" }
             true
         } catch (e: TelegramApiException) {
             logger.error(e) { "Failed to send video to chat $chatId" }
@@ -102,7 +102,7 @@ class TelegramSenderService(
             }
             val response = telegramClient.execute(sendVideo)
             val fileId = response.video?.fileId
-            logger.info { "Video sent to chat $chatId, file_id: $fileId" }
+            logger.debug { "Video sent to chat $chatId, file_id: $fileId" }
             fileId
         } catch (e: TelegramApiException) {
             logger.error(e) { "Failed to send video to chat $chatId" }
@@ -117,7 +117,7 @@ class TelegramSenderService(
                 replyToMessageId?.let { this.replyToMessageId = it }
             }
             telegramClient.execute(sendVideo)
-            logger.info { "Video sent to chat $chatId by file_id (cached)" }
+            logger.debug { "Video sent to chat $chatId by file_id (cached)" }
             true
         } catch (e: TelegramApiException) {
             logger.error(e) { "Failed to send video by file_id to chat $chatId" }

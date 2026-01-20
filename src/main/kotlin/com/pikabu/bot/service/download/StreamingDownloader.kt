@@ -42,12 +42,12 @@ class StreamingDownloader(
                 Files.createTempFile("pikabu_video_", ".mp4").toFile()
             }
 
-            logger.info { "Created temp file: ${tempFile.absolutePath}" }
+            logger.debug { "Created temp file: ${tempFile.absolutePath}" }
 
             // Загружаем видео
             val downloadResult = videoDownloadService.downloadVideo(videoUrl, tempFile)
 
-            logger.info { "Video downloaded: ${downloadResult.sizeBytes} bytes, sending to user $chatId" }
+            logger.debug { "Video downloaded: ${downloadResult.sizeBytes} bytes, sending to user $chatId" }
 
             // Отправляем в Telegram
             val caption = buildCaption(videoTitle, downloadResult)
@@ -59,7 +59,7 @@ class StreamingDownloader(
             )
 
             if (fileId != null) {
-                logger.info { "Video sent successfully to user $chatId, file_id: $fileId" }
+                logger.info { "Video sent to user $chatId (${downloadResult.sizeBytes} bytes)" }
                 return SendResult(
                     success = true,
                     fileId = fileId,

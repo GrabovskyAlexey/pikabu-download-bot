@@ -25,7 +25,7 @@ class VideoParserService(
     }
 
     fun parseVideos(pageUrl: String): List<VideoInfo> {
-        logger.info { "Parsing videos from: $pageUrl" }
+        logger.debug { "Parsing videos from: $pageUrl" }
 
         val html = runBlocking {
             fetchHtml(pageUrl)
@@ -46,7 +46,7 @@ class VideoParserService(
             throw VideoNotFoundException("На странице не найдено видео")
         }
 
-        logger.info { "Found ${videos.size} video(s) on page: $pageUrl" }
+        logger.debug { "Found ${videos.size} video(s) on page: $pageUrl" }
         return videos
     }
 

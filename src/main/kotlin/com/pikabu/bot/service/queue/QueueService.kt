@@ -114,7 +114,7 @@ class QueueService(
         downloadHistoryRepository.save(historyEntity)
         downloadQueueRepository.delete(queueEntity)
 
-        logger.info { "Archived to history: user=${queueEntity.userId}, video=${queueEntity.videoUrl}, status=${queueEntity.status}" }
+        logger.debug { "Archived to history: user=${queueEntity.userId}, video=${queueEntity.videoUrl}, status=${queueEntity.status}" }
     }
 
     /**
@@ -147,7 +147,7 @@ class QueueService(
     @Transactional
     fun removeFromQueue(queueId: Long) {
         downloadQueueRepository.deleteById(queueId)
-        logger.info { "Removed from queue: $queueId" }
+        logger.debug { "Removed from queue: $queueId" }
         recalculatePositions()
     }
 

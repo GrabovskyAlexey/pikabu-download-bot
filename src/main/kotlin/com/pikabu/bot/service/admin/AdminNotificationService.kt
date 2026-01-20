@@ -143,7 +143,7 @@ class AdminNotificationService(
 
         try {
             telegramSenderService.sendMessage(adminConfig.userId, message)
-            logger.info { "Admin notification sent successfully" }
+            logger.debug { "Admin notification sent successfully" }
         } catch (e: Exception) {
             logger.error(e) { "Failed to send admin notification" }
         }

@@ -44,11 +44,11 @@ class VideoDownloadService(
 
         repeat(maxRetries) { attempt ->
             try {
-                logger.info { "Downloading video (attempt ${attempt + 1}/$maxRetries): $videoUrl" }
+                logger.debug { "Downloading video (attempt ${attempt + 1}/$maxRetries): $videoUrl" }
 
                 val result = downloadVideoInternal(videoUrl, outputFile)
 
-                logger.info { "Video downloaded successfully: ${result.sizeBytes} bytes, ${result.durationMs} ms" }
+                logger.debug { "Video downloaded successfully: ${result.sizeBytes} bytes, ${result.durationMs} ms" }
                 return result
 
             } catch (e: DownloadException) {
@@ -57,7 +57,7 @@ class VideoDownloadService(
 
                 if (attempt < maxRetries - 1) {
                     val delayMs = calculateBackoffDelay(attempt)
-                    logger.info { "Retrying in ${delayMs}ms..." }
+                    logger.debug { "Retrying in ${delayMs}ms..." }
                     delay(delayMs)
                 }
             }

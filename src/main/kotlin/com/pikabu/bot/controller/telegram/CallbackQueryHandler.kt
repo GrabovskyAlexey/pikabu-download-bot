@@ -26,7 +26,7 @@ class CallbackQueryHandler(
         val data = callbackQuery.data
         val messageId = callbackQuery.message.messageId
 
-        logger.info { "Received callback query from user $chatId: $data" }
+        logger.debug { "Received callback query from user $chatId: $data" }
 
         try {
             when {
@@ -76,7 +76,7 @@ class CallbackQueryHandler(
         }
 
         val video = cacheEntry.videos[index]
-        logger.info { "User $chatId selected video #$index: ${video.url}" }
+        logger.debug { "User $chatId selected video #$index: ${video.url}" }
 
         try {
             answerCallbackQuery(callbackQueryId, "Добавляю в очередь...")
@@ -106,7 +106,7 @@ class CallbackQueryHandler(
 
             telegramSenderService.editMessageText(chatId, messageId, message)
 
-            logger.info { "Video added to queue from callback for user $chatId: ${video.url}" }
+            logger.debug { "Video added to queue from callback for user $chatId: ${video.url}" }
 
         } catch (e: Exception) {
             logger.error(e) { "Failed to add video to queue from callback for user $chatId" }

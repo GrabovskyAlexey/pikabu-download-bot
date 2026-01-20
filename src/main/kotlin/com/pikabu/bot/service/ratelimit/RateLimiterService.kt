@@ -103,7 +103,7 @@ class RateLimiterService(
     @Transactional
     fun resetRateLimit(userId: Long) {
         rateLimitRepository.deleteByUserId(userId)
-        logger.info { "Rate limit reset for user $userId" }
+        logger.debug { "Rate limit reset for user $userId" }
     }
 
     /**

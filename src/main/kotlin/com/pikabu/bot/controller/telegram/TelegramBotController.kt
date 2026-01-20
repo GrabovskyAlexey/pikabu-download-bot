@@ -50,7 +50,7 @@ class TelegramBotController(
         val chatId = message.chatId
         val text = message.text
 
-        logger.info { "Received message from user $chatId: $text" }
+        logger.debug { "Received message from user $chatId: $text" }
 
         when {
             text.startsWith("/start") -> handleStartCommand(chatId)
@@ -94,7 +94,7 @@ class TelegramBotController(
     }
 
     private fun handleUrlMessage(chatId: Long, url: String, messageId: Int) {
-        logger.info { "Processing URL from user $chatId: $url" }
+        logger.debug { "Processing URL from user $chatId: $url" }
 
         try {
             // Проверка rate limit
@@ -117,7 +117,7 @@ class TelegramBotController(
 
                     if (cachedFileId != null) {
                         // Видео уже в кэше - отправляем мгновенно
-                        logger.info { "Sending cached video to user $chatId (file_id: $cachedFileId)" }
+                        logger.debug { "Sending cached video to user $chatId" }
 
                         // Получаем размер из кэша для caption
                         val cacheEntry = videoCacheService.getCacheEntry(video.url)
@@ -227,9 +227,7 @@ class TelegramBotController(
                 telegramSenderService.editMessageText(chatId, statusMessageId, updatedMessage)
             }
 
-            logger.info { "Video added to queue for user $chatId, position: $actualPosition" }
-
-            logger.info { "Video added to queue for user $chatId: $videoUrl" }
+            logger.info { "Video added to queue for user $chatId (position: $actualPosition)" }
         } catch (e: Exception) {
             logger.error(e) { "Failed to add video to queue for user $chatId" }
             telegramSenderService.sendMessage(

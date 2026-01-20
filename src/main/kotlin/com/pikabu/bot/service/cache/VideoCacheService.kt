@@ -61,7 +61,7 @@ class VideoCacheService(
                 fileSize = fileSize
             )
             videoCacheRepository.save(entity)
-            logger.info { "Cached file_id for URL: $videoUrl (size: $fileSize bytes)" }
+            logger.debug { "Cached file_id for URL: $videoUrl (size: $fileSize bytes)" }
         } catch (e: Exception) {
             logger.error(e) { "Failed to cache file_id for URL: $videoUrl" }
         }

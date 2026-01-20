@@ -30,7 +30,7 @@ class DownloadOrchestrator(
         }
 
         try {
-            logger.info { "Starting download process for queue ID: $queueId, user: ${queueEntity.userId}" }
+            logger.debug { "Starting download process for queue ID: $queueId, user: ${queueEntity.userId}" }
 
             // Обновляем статус на DOWNLOADING
             queueService.updateStatus(queueId, QueueStatus.DOWNLOADING)
@@ -41,7 +41,7 @@ class DownloadOrchestrator(
 
             if (cachedFileId != null) {
                 // Отправляем по кэшированному file_id
-                logger.info { "Using cached file_id for queue $queueId" }
+                logger.debug { "Using cached file_id for queue $queueId" }
 
                 // Формируем caption с размером из кэша
                 val cacheEntry = videoCacheService.getCacheEntry(queueEntity.videoUrl)
@@ -87,7 +87,7 @@ class DownloadOrchestrator(
                 val updatedEntity = queueService.getById(queueId)
                 if (updatedEntity != null) {
                     queueService.archiveToHistory(updatedEntity)
-                    logger.info { "Download completed and archived for queue ID: $queueId" }
+                    logger.debug { "Download archived for queue ID: $queueId" }
                 } else {
                     logger.warn { "Could not find queue entity $queueId for archiving" }
                 }

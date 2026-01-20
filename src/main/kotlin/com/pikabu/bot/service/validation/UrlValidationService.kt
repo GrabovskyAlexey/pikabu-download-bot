@@ -40,7 +40,7 @@ class UrlValidationService {
             throw InvalidUrlException("Поддерживаются только ссылки с pikabu.ru")
         }
 
-        logger.info { "URL validation passed: $trimmedUrl" }
+        logger.debug { "URL validation passed: $trimmedUrl" }
         return trimmedUrl
     }
 

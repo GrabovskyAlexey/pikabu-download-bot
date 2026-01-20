@@ -48,7 +48,7 @@ class PikabuHtmlParser {
                 }.firstOrNull()
             }
 
-        logger.info { "Parsed ${videos.size} raw video(s), filtered to ${uniqueVideos.size} unique" }
+        logger.debug { "Parsed ${videos.size} raw video(s), filtered to ${uniqueVideos.size} unique" }
         uniqueVideos.forEachIndexed { index, video ->
             logger.debug { "Video #${index + 1}: ${video.url} (format: ${video.format}, title: ${video.title})" }
         }
