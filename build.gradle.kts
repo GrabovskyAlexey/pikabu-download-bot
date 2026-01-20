@@ -48,8 +48,7 @@ dependencies {
 
     // Database
     implementation("org.postgresql:postgresql")
-    implementation("org.flywaydb:flyway-core")
-    implementation("org.flywaydb:flyway-database-postgresql")
+    implementation("org.liquibase:liquibase-core")
 
     // Logging
     implementation("io.github.oshai:kotlin-logging-jvm:7.0.13")
@@ -71,6 +70,8 @@ dependencies {
     testImplementation("io.kotest:kotest-property-jvm:6.0.7")
     testImplementation("io.kotest.extensions:kotest-extensions-spring:1.3.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("io.ktor:ktor-client-mock:3.3.1")
+    testImplementation("io.ktor:ktor-serialization-kotlinx-json:3.3.1")
     testImplementation("org.testcontainers:testcontainers:1.20.4")
     testImplementation("org.testcontainers:postgresql:1.20.4")
     testImplementation("org.testcontainers:junit-jupiter:1.20.4")

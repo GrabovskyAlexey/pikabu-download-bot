@@ -8,9 +8,10 @@ services:
     container_name: pikabu-bot
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${SERVER_PORT:-8080}:${SERVER_PORT:-8080}"
     environment:
       - SPRING_PROFILES_ACTIVE=prod
+      - SERVER_PORT=${SERVER_PORT:-8080}
       - BOT_TOKEN=${BOT_TOKEN}
       - BOT_USERNAME=${BOT_USERNAME}
       - ADMIN_USER_ID=${ADMIN_USER_ID}

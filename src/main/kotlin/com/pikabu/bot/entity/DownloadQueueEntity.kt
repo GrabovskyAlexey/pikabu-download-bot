@@ -7,6 +7,7 @@ import java.time.LocalDateTime
 @Entity
 @Table(
     name = "download_queue",
+    schema = "pikabu_bot",
     indexes = [
         Index(name = "idx_status_created", columnList = "status,created_at"),
         Index(name = "idx_user_id", columnList = "user_id")

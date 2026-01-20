@@ -6,6 +6,7 @@ import java.time.LocalDateTime
 @Entity
 @Table(
     name = "rate_limits",
+    schema = "pikabu_bot",
     indexes = [Index(name = "idx_user_id_rate", columnList = "user_id")]
 )
 data class RateLimitEntity(

@@ -33,8 +33,26 @@ class PikabuHtmlParser {
         // Стратегия 3: Regex поиск в inline JavaScript
         videos.addAll(parseInlineScripts(html, pageUrl))
 
-        logger.info { "Parsed ${videos.size} unique video(s)" }
-        return videos.toList()
+        // Удаляем дубликаты по URL и группируем по базовому имени файла
+        val uniqueVideos = videos
+            .distinctBy { it.url } // Убираем полные дубликаты
+            .groupBy { getBaseFileName(it.url) } // Группируем по имени без расширения
+            .mapNotNull { (_, group) ->
+                // Если есть несколько форматов, предпочитаем MP4, затем WEBM
+                group.sortedByDescending {
+                    when (it.format) {
+                        com.pikabu.bot.domain.model.VideoFormat.MP4 -> 2
+                        com.pikabu.bot.domain.model.VideoFormat.WEBM -> 1
+                        else -> 0
+                    }
+                }.firstOrNull()
+            }
+
+        logger.info { "Parsed ${videos.size} raw video(s), filtered to ${uniqueVideos.size} unique" }
+        uniqueVideos.forEachIndexed { index, video ->
+            logger.debug { "Video #${index + 1}: ${video.url} (format: ${video.format}, title: ${video.title})" }
+        }
+        return uniqueVideos
     }
 
     /**
@@ -192,5 +210,14 @@ class PikabuHtmlParser {
             .substringBefore('#')
 
         return extension.toVideoFormat()
+    }
+
+    /**
+     * Получает базовое имя файла без расширения (для группировки разных форматов)
+     */
+    private fun getBaseFileName(url: String): String {
+        return url
+            .substringAfterLast('/')
+            .substringBeforeLast('.')
     }
 }

@@ -1,7 +1,9 @@
 package com.pikabu.bot.service.parser
 
 import com.pikabu.bot.domain.exception.VideoNotFoundException
+import com.pikabu.bot.domain.model.ErrorType
 import com.pikabu.bot.domain.model.VideoInfo
+import com.pikabu.bot.service.admin.ErrorMonitoringService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.*
 import io.ktor.client.request.*
@@ -14,7 +16,8 @@ private val logger = KotlinLogging.logger {}
 @Service
 class VideoParserService(
     private val httpClient: HttpClient,
-    private val pikabuHtmlParser: PikabuHtmlParser
+    private val pikabuHtmlParser: PikabuHtmlParser,
+    private val errorMonitoringService: ErrorMonitoringService
 ) {
 
     companion object {
@@ -32,6 +35,14 @@ class VideoParserService(
 
         if (videos.isEmpty()) {
             logger.warn { "No videos found on page: $pageUrl" }
+
+            // Логируем ошибку парсинга
+            errorMonitoringService.logError(
+                errorType = ErrorType.PARSING_ERROR,
+                errorMessage = "No videos found on page",
+                pageUrl = pageUrl
+            )
+
             throw VideoNotFoundException("На странице не найдено видео")
         }
 
@@ -47,6 +58,14 @@ class VideoParserService(
 
             if (response.status.value !in 200..299) {
                 logger.error { "Failed to fetch page: $url, status: ${response.status}" }
+
+                // Логируем ошибку
+                errorMonitoringService.logError(
+                    errorType = ErrorType.PARSING_ERROR,
+                    errorMessage = "Failed to fetch page: HTTP ${response.status.value}",
+                    pageUrl = url
+                )
+
                 throw VideoNotFoundException("Не удалось загрузить страницу (HTTP ${response.status.value})")
             }
 
@@ -55,6 +74,15 @@ class VideoParserService(
             throw e
         } catch (e: Exception) {
             logger.error(e) { "Error fetching HTML from: $url" }
+
+            // Логируем ошибку
+            errorMonitoringService.logError(
+                errorType = ErrorType.PARSING_ERROR,
+                errorMessage = "Error fetching HTML: ${e.message}",
+                pageUrl = url,
+                stackTrace = e.stackTraceToString().take(1000)
+            )
+
             throw VideoNotFoundException("Ошибка при загрузке страницы: ${e.message}")
         }
     }

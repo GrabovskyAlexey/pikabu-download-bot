@@ -2,11 +2,15 @@ package com.pikabu.bot.controller.telegram
 
 import com.pikabu.bot.config.TelegramBotConfig
 import com.pikabu.bot.domain.exception.InvalidUrlException
+import com.pikabu.bot.domain.exception.RateLimitExceededException
 import com.pikabu.bot.domain.exception.VideoNotFoundException
 import com.pikabu.bot.service.parser.VideoParserService
+import com.pikabu.bot.service.cache.VideoCacheService
 import com.pikabu.bot.service.queue.QueueService
+import com.pikabu.bot.service.ratelimit.RateLimiterService
 import com.pikabu.bot.service.telegram.MessageUpdaterService
 import com.pikabu.bot.service.telegram.TelegramSenderService
+import com.pikabu.bot.service.telegram.VideoSelectionCache
 import com.pikabu.bot.service.validation.UrlValidationService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.stereotype.Component
@@ -23,7 +27,10 @@ class TelegramBotController(
     private val urlValidationService: UrlValidationService,
     private val videoParserService: VideoParserService,
     private val queueService: QueueService,
-    private val messageUpdaterService: MessageUpdaterService
+    private val messageUpdaterService: MessageUpdaterService,
+    private val rateLimiterService: RateLimiterService,
+    private val videoSelectionCache: VideoSelectionCache,
+    private val videoCacheService: VideoCacheService
 ) : LongPollingSingleThreadUpdateConsumer {
 
     override fun consume(update: Update) {
@@ -90,7 +97,8 @@ class TelegramBotController(
         logger.info { "Processing URL from user $chatId: $url" }
 
         try {
-            // TODO: Phase 7 - implement rate limiting check
+            // Проверка rate limit
+            rateLimiterService.checkRateLimit(chatId)
 
             // Валидация URL
             val validatedUrl = urlValidationService.validateUrl(url)
@@ -103,13 +111,37 @@ class TelegramBotController(
                     telegramSenderService.sendMessage(chatId, "На странице не найдено видео")
                 }
                 videos.size == 1 -> {
-                    // Одно видео - добавляем в очередь сразу
-                    addVideoToQueue(chatId, messageId, videos[0].url, videos[0].title)
+                    // Одно видео - проверяем кэш
+                    val video = videos[0]
+                    val cachedFileId = videoCacheService.getFileId(video.url)
+
+                    if (cachedFileId != null) {
+                        // Видео уже в кэше - отправляем мгновенно
+                        logger.info { "Sending cached video to user $chatId (file_id: $cachedFileId)" }
+
+                        // Получаем размер из кэша для caption
+                        val cacheEntry = videoCacheService.getCacheEntry(video.url)
+                        val caption = buildCachedCaption(video.title, cacheEntry?.fileSize)
+
+                        val success = telegramSenderService.sendVideoByFileId(
+                            chatId = chatId,
+                            fileId = cachedFileId,
+                            caption = caption
+                        )
+                        if (!success) {
+                            telegramSenderService.sendMessage(chatId, "❌ Ошибка отправки. Попробуйте еще раз.")
+                        }
+                    } else {
+                        // Нет в кэше - добавляем в очередь
+                        addVideoToQueue(chatId, messageId, video.url, video.title)
+                    }
                 }
                 else -> {
-                    // Несколько видео - показываем inline кнопки
+                    // Несколько видео - сохраняем в кэш и показываем inline кнопки
+                    val cacheId = videoSelectionCache.store(videos, validatedUrl)
                     val buttons = videos.mapIndexed { index, video ->
-                        "Видео ${index + 1}" to "select_video:$validatedUrl:${video.url}"
+                        val title = video.title ?: "Видео ${index + 1}"
+                        title to "video:$cacheId:$index"
                     }
                     telegramSenderService.sendMessageWithInlineKeyboard(
                         chatId,
@@ -118,6 +150,9 @@ class TelegramBotController(
                     )
                 }
             }
+        } catch (e: RateLimitExceededException) {
+            logger.warn { "Rate limit exceeded for user $chatId: ${e.message}" }
+            telegramSenderService.sendMessage(chatId, "⏱️ ${e.message}")
         } catch (e: InvalidUrlException) {
             logger.warn { "Invalid URL from user $chatId: ${e.message}" }
             telegramSenderService.sendMessage(chatId, "❌ ${e.message}")
@@ -141,21 +176,58 @@ class TelegramBotController(
     }
 
     /**
+     * Формирует caption для кэшированного видео
+     */
+    private fun buildCachedCaption(videoTitle: String?, fileSize: Long?): String {
+        return buildString {
+            if (videoTitle != null) {
+                append("📹 $videoTitle\n\n")
+            }
+            if (fileSize != null) {
+                val sizeMb = fileSize / (1024.0 * 1024.0)
+                append("✅ Загружено: %.2f МБ\n\n".format(sizeMb))
+            } else {
+                append("✅ Видео загружено\n\n")
+            }
+            append("Спасибо что воспользовались @${botConfig.username}")
+        }
+    }
+
+    /**
      * Добавляет видео в очередь загрузки
      */
     private fun addVideoToQueue(chatId: Long, messageId: Int, videoUrl: String, videoTitle: String?) {
         try {
-            // Добавляем в очередь
+            // Отправляем сообщение о добавлении в очередь и получаем его ID
+            val position = 1 // Временно, будет пересчитано
+            val statusMessageId = messageUpdaterService.sendQueueAddedMessage(chatId, position)
+
+            if (statusMessageId == null) {
+                logger.error { "Failed to send queue status message" }
+                telegramSenderService.sendMessage(chatId, "❌ Ошибка при добавлении в очередь")
+                return
+            }
+
+            // Добавляем в очередь с ID сообщения о статусе (для обновлений)
             val queueEntity = queueService.addToQueue(
                 userId = chatId,
-                messageId = messageId,
+                messageId = statusMessageId,
                 videoUrl = videoUrl,
                 videoTitle = videoTitle
             )
 
-            // Отправляем сообщение о добавлении в очередь
-            val position = queueEntity.position ?: 1
-            messageUpdaterService.sendQueueAddedMessage(chatId, position)
+            // Обновляем сообщение с правильной позицией
+            val actualPosition = queueEntity.position ?: 1
+            if (actualPosition != position) {
+                val updatedMessage = if (actualPosition == 1) {
+                    "✅ Видео добавлено в очередь.\n\n⏳ Загрузка начнётся сейчас..."
+                } else {
+                    "✅ Видео добавлено в очередь.\n\n⏳ Позиция в очереди: $actualPosition"
+                }
+                telegramSenderService.editMessageText(chatId, statusMessageId, updatedMessage)
+            }
+
+            logger.info { "Video added to queue for user $chatId, position: $actualPosition" }
 
             logger.info { "Video added to queue for user $chatId: $videoUrl" }
         } catch (e: Exception) {

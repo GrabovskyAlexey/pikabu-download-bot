@@ -5,6 +5,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import jakarta.annotation.PostConstruct
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.Lazy
 import org.telegram.telegrambots.longpolling.TelegramBotsLongPollingApplication
 import org.telegram.telegrambots.meta.generics.TelegramClient
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient as TelegramClientImpl
@@ -14,7 +15,7 @@ private val logger = KotlinLogging.logger {}
 @Configuration
 class TelegramClientConfig(
     private val botConfig: TelegramBotConfig,
-    private val telegramBotController: TelegramBotController
+    @Lazy private val telegramBotController: TelegramBotController
 ) {
 
     @Bean

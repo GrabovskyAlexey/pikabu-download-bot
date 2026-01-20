@@ -6,6 +6,7 @@ import java.time.LocalDateTime
 @Entity
 @Table(
     name = "download_history",
+    schema = "pikabu_bot",
     indexes = [Index(name = "idx_user_id_completed", columnList = "user_id,completed_at")]
 )
 data class DownloadHistoryEntity(

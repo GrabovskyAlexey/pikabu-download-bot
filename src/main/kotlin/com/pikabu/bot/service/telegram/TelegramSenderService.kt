@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service
 import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateConsumer
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage
 import org.telegram.telegrambots.meta.api.methods.send.SendVideo
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText
 import org.telegram.telegrambots.meta.api.objects.InputFile
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup
@@ -72,7 +73,9 @@ class TelegramSenderService(
             logger.debug { "Message $messageId edited in chat $chatId" }
             true
         } catch (e: TelegramApiException) {
-            logger.error(e) { "Failed to edit message $messageId in chat $chatId" }
+            // Сообщение может быть уже удалено или стать нередактируемым (после reply с медиа)
+            // Это нормальная ситуация, не логируем как ERROR
+            logger.debug { "Cannot edit message $messageId in chat $chatId: ${e.message}" }
             false
         }
     }
@@ -91,17 +94,45 @@ class TelegramSenderService(
         }
     }
 
-    fun sendVideo(chatId: Long, videoFile: File, caption: String? = null, replyToMessageId: Int? = null): Boolean {
+    fun sendVideo(chatId: Long, videoFile: File, caption: String? = null, replyToMessageId: Int? = null): String? {
         return try {
             val sendVideo = SendVideo(chatId.toString(), InputFile(videoFile)).apply {
                 caption?.let { this.caption = it }
                 replyToMessageId?.let { this.replyToMessageId = it }
             }
-            telegramClient.execute(sendVideo)
-            logger.info { "Video sent to chat $chatId" }
-            true
+            val response = telegramClient.execute(sendVideo)
+            val fileId = response.video?.fileId
+            logger.info { "Video sent to chat $chatId, file_id: $fileId" }
+            fileId
         } catch (e: TelegramApiException) {
             logger.error(e) { "Failed to send video to chat $chatId" }
+            null
+        }
+    }
+
+    fun sendVideoByFileId(chatId: Long, fileId: String, caption: String? = null, replyToMessageId: Int? = null): Boolean {
+        return try {
+            val sendVideo = SendVideo(chatId.toString(), InputFile(fileId)).apply {
+                caption?.let { this.caption = it }
+                replyToMessageId?.let { this.replyToMessageId = it }
+            }
+            telegramClient.execute(sendVideo)
+            logger.info { "Video sent to chat $chatId by file_id (cached)" }
+            true
+        } catch (e: TelegramApiException) {
+            logger.error(e) { "Failed to send video by file_id to chat $chatId" }
+            false
+        }
+    }
+
+    fun deleteMessage(chatId: Long, messageId: Int): Boolean {
+        return try {
+            val deleteMessage = DeleteMessage(chatId.toString(), messageId)
+            telegramClient.execute(deleteMessage)
+            logger.debug { "Message $messageId deleted in chat $chatId" }
+            true
+        } catch (e: TelegramApiException) {
+            logger.debug { "Cannot delete message $messageId in chat $chatId: ${e.message}" }
             false
         }
     }

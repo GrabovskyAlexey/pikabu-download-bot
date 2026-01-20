@@ -1,6 +1,7 @@
 package com.pikabu.bot.service.queue
 
 import com.pikabu.bot.domain.model.QueueStatus
+import com.pikabu.bot.service.download.DownloadOrchestrator
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.*
 import org.springframework.beans.factory.annotation.Value
@@ -12,6 +13,7 @@ private val logger = KotlinLogging.logger {}
 @Service
 class QueueProcessor(
     private val queueService: QueueService,
+    private val downloadOrchestrator: DownloadOrchestrator,
     @Value("\${app.max-concurrent-downloads:5}")
     private val maxConcurrentDownloads: Int
 ) {
@@ -50,18 +52,8 @@ class QueueProcessor(
                         // Обновляем статус на DOWNLOADING
                         queueEntity.id?.let { queueService.updateStatus(it, QueueStatus.DOWNLOADING) }
 
-                        // TODO: Phase 6 - implement actual download logic
-                        // downloadOrchestrator.download(queueEntity)
-
-                        // Временная заглушка - симуляция загрузки
-                        logger.warn { "Download system not implemented yet (Phase 6)" }
-                        delay(1000) // Имитация загрузки
-
-                        // Пока просто помечаем как завершенное и архивируем
-                        queueEntity.id?.let { queueService.updateStatus(it, QueueStatus.COMPLETED) }
-                        queueService.getById(queueEntity.id!!)?.let { updated ->
-                            queueService.archiveToHistory(updated)
-                        }
+                        // Реальная загрузка через orchestrator
+                        downloadOrchestrator.processDownload(queueEntity)
 
                         logger.info { "Download completed for queue ID: ${queueEntity.id}" }
 

@@ -6,6 +6,7 @@ import java.time.LocalDateTime
 @Entity
 @Table(
     name = "error_log",
+    schema = "pikabu_bot",
     indexes = [
         Index(name = "idx_error_type_occurred", columnList = "error_type,occurred_at"),
         Index(name = "idx_notified_admin", columnList = "notified_admin")
