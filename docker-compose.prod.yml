@@ -1,10 +1,13 @@
+# Production docker-compose.yml
+# Скопируйте этот файл на сервер в /opt/pikabu-bot/docker-compose.yml
+#
+# ВАЖНО: Замените 'yourusername' на ваш GitHub username!
+
 version: '3.9'
 
 services:
   bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/yourusername/pikabu-download-bot:latest
     container_name: pikabu-bot
     restart: unless-stopped
     ports:
@@ -17,9 +20,10 @@ services:
       - ADMIN_USER_ID=${ADMIN_USER_ID}
       - ADMIN_ENABLE_NOTIFICATIONS=${ADMIN_ENABLE_NOTIFICATIONS:-true}
       - ADMIN_ENABLE_DAILY_DIGEST=${ADMIN_ENABLE_DAILY_DIGEST:-false}
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/${DB_NAME}?currentSchema=pikabu_bot
-      - SPRING_DATASOURCE_USERNAME=${DB_USER}
-      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      # Database connection - currentSchema=pikabu_bot гарантирует правильную схему
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/${DB_NAME:-pikabu_bot}?currentSchema=pikabu_bot
+      - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
       - APP_MAX_CONCURRENT_DOWNLOADS=${APP_MAX_CONCURRENT_DOWNLOADS:-5}
       - APP_RATE_LIMIT_MAX_REQUESTS=${APP_RATE_LIMIT_MAX_REQUESTS:-1000}
       - APP_RATE_LIMIT_WINDOW_HOURS=${APP_RATE_LIMIT_WINDOW_HOURS:-1}
@@ -29,7 +33,13 @@ services:
     networks:
       - pikabu-network
     volumes:
+      - ./logs:/app/logs
       - /tmp/pikabu-bot:/tmp
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   postgres:
     image: postgres:16-alpine
@@ -41,8 +51,6 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     networks:
       - pikabu-network
     healthcheck:
@@ -50,6 +58,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   pikabu-network:

@@ -1,9 +1,12 @@
+server:
+  port: ${SERVER_PORT:8080}
+
 spring:
   application:
     name: pikabu-download-bot
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/pikabu_bot}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/pikabu_bot?currentSchema=pikabu_bot}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
@@ -16,11 +19,12 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
+        default_schema: pikabu_bot
 
-  flyway:
+  liquibase:
     enabled: true
-    baseline-on-migrate: true
-    locations: classpath:db/migration
+    change-log: classpath:db/changelog/db.changelog-master.xml
+    default-schema: pikabu_bot
 
 management:
   endpoints:
@@ -30,17 +34,16 @@ management:
   endpoint:
     health:
       show-details: always
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
 
 logging:
   level:
     root: INFO
     com.pikabu.bot: INFO
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    com.pikabu.bot.service.parser: DEBUG
 
 telegram:
   bot:

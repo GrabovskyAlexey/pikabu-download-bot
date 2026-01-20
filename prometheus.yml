@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'pikabu-bot'
+
+scrape_configs:
+  - job_name: 'pikabu-download-bot'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['bot:8080']  # If running in Docker Compose
+        labels:
+          application: 'pikabu-bot'
+          environment: 'production'
+
+    # Для локального запуска раскомментируйте:
+    # - targets: ['localhost:8080']
+    #   labels:
+    #     application: 'pikabu-bot'
+    #     environment: 'local'
