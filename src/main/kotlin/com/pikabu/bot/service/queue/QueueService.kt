@@ -15,7 +15,8 @@ private val logger = KotlinLogging.logger {}
 @Service
 class QueueService(
     private val downloadQueueRepository: DownloadQueueRepository,
-    private val downloadHistoryRepository: DownloadHistoryRepository
+    private val downloadHistoryRepository: DownloadHistoryRepository,
+    private val metricsService: com.pikabu.bot.service.metrics.MetricsService
 ) {
 
     /**
@@ -41,6 +42,10 @@ class QueueService(
 
         val saved = downloadQueueRepository.save(queueEntity)
         logger.info { "Added to queue: user=$userId, video=$videoUrl, position=${saved.position}" }
+
+        // Обновляем метрику размера очереди
+        updateQueueSizeMetric()
+
         return saved
     }
 
@@ -115,6 +120,9 @@ class QueueService(
         downloadQueueRepository.delete(queueEntity)
 
         logger.debug { "Archived to history: user=${queueEntity.userId}, video=${queueEntity.videoUrl}, status=${queueEntity.status}" }
+
+        // Обновляем метрику размера очереди
+        updateQueueSizeMetric()
     }
 
     /**
@@ -156,5 +164,13 @@ class QueueService(
      */
     fun getById(queueId: Long): DownloadQueueEntity? {
         return downloadQueueRepository.findById(queueId).orElse(null)
+    }
+
+    /**
+     * Обновляет метрику размера очереди
+     */
+    private fun updateQueueSizeMetric() {
+        val queueSize = downloadQueueRepository.countByStatus(QueueStatus.QUEUED).toInt()
+        metricsService.updateQueueSize(queueSize)
     }
 }

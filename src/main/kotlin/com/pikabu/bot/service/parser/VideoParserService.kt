@@ -17,7 +17,8 @@ private val logger = KotlinLogging.logger {}
 class VideoParserService(
     private val httpClient: HttpClient,
     private val pikabuHtmlParser: PikabuHtmlParser,
-    private val errorMonitoringService: ErrorMonitoringService
+    private val errorMonitoringService: ErrorMonitoringService,
+    private val metricsService: com.pikabu.bot.service.metrics.MetricsService
 ) {
 
     companion object {
@@ -25,6 +26,7 @@ class VideoParserService(
     }
 
     fun parseVideos(pageUrl: String): List<VideoInfo> {
+        val startTime = System.currentTimeMillis()
         logger.debug { "Parsing videos from: $pageUrl" }
 
         val html = runBlocking {
@@ -35,6 +37,7 @@ class VideoParserService(
 
         if (videos.isEmpty()) {
             logger.warn { "No videos found on page: $pageUrl" }
+            metricsService.recordParsingError()
 
             // Логируем ошибку парсинга
             errorMonitoringService.logError(
@@ -45,6 +48,9 @@ class VideoParserService(
 
             throw VideoNotFoundException("На странице не найдено видео")
         }
+
+        val duration = System.currentTimeMillis() - startTime
+        metricsService.recordParseDuration(duration)
 
         logger.debug { "Found ${videos.size} video(s) on page: $pageUrl" }
         return videos
@@ -58,6 +64,7 @@ class VideoParserService(
 
             if (response.status.value !in 200..299) {
                 logger.error { "Failed to fetch page: $url, status: ${response.status}" }
+                metricsService.recordParsingError()
 
                 // Логируем ошибку
                 errorMonitoringService.logError(
@@ -74,6 +81,7 @@ class VideoParserService(
             throw e
         } catch (e: Exception) {
             logger.error(e) { "Error fetching HTML from: $url" }
+            metricsService.recordParsingError()
 
             // Логируем ошибку
             errorMonitoringService.logError(

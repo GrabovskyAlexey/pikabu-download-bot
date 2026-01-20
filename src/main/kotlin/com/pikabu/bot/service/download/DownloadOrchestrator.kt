@@ -17,7 +17,8 @@ class DownloadOrchestrator(
     private val queueService: QueueService,
     private val telegramSenderService: TelegramSenderService,
     private val videoCacheService: VideoCacheService,
-    private val botConfig: com.pikabu.bot.config.TelegramBotConfig
+    private val botConfig: com.pikabu.bot.config.TelegramBotConfig,
+    private val metricsService: com.pikabu.bot.service.metrics.MetricsService
 ) {
 
     /**
@@ -32,6 +33,9 @@ class DownloadOrchestrator(
         try {
             logger.debug { "Starting download process for queue ID: $queueId, user: ${queueEntity.userId}" }
 
+            // Увеличиваем счетчик активных загрузок
+            metricsService.incrementActiveDownloads()
+
             // Обновляем статус на DOWNLOADING
             queueService.updateStatus(queueId, QueueStatus.DOWNLOADING)
 
@@ -42,6 +46,7 @@ class DownloadOrchestrator(
             if (cachedFileId != null) {
                 // Отправляем по кэшированному file_id
                 logger.debug { "Using cached file_id for queue $queueId" }
+                metricsService.recordCacheHit()
 
                 // Формируем caption с размером из кэша
                 val cacheEntry = videoCacheService.getCacheEntry(queueEntity.videoUrl)
@@ -53,6 +58,7 @@ class DownloadOrchestrator(
                     caption = caption
                 )
             } else {
+                metricsService.recordCacheMiss()
                 // Кэша нет - загружаем и отправляем
                 val downloadResult = streamingDownloader.downloadAndSend(
                     videoUrl = queueEntity.videoUrl,
@@ -74,6 +80,9 @@ class DownloadOrchestrator(
             }
 
             if (success) {
+                // Записываем успешную загрузку в метрики
+                metricsService.recordSuccessfulDownload()
+
                 // Видео отправлено успешно - удаляем статусное сообщение
                 telegramSenderService.deleteMessage(
                     chatId = queueEntity.userId,
@@ -100,6 +109,9 @@ class DownloadOrchestrator(
         } catch (e: Exception) {
             logger.error(e) { "Unexpected error in download orchestrator for queue ID: $queueId" }
             handleDownloadFailure(queueEntity, "Unexpected error: ${e.message}")
+        } finally {
+            // Уменьшаем счетчик активных загрузок
+            metricsService.decrementActiveDownloads()
         }
     }
 
@@ -110,6 +122,7 @@ class DownloadOrchestrator(
         val queueId = queueEntity.id ?: return
 
         logger.error { "Download failed for queue ID $queueId: $errorMessage" }
+        metricsService.recordFailedDownload()
 
         // Обновляем статус на FAILED
         queueService.updateStatus(queueId, QueueStatus.FAILED)

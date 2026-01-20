@@ -14,7 +14,8 @@ private val logger = KotlinLogging.logger {}
 @Service
 class RateLimiterService(
     private val rateLimitRepository: RateLimitRepository,
-    private val rateLimiterConfig: RateLimiterConfig
+    private val rateLimiterConfig: RateLimiterConfig,
+    private val metricsService: com.pikabu.bot.service.metrics.MetricsService
 ) {
 
     /**
@@ -47,6 +48,7 @@ class RateLimiterService(
         if (rateLimitEntity.requestCount >= rateLimiterConfig.maxRequests) {
             val remainingTime = calculateRemainingTime(windowEnd, now)
             logger.warn { "Rate limit exceeded for user $userId: ${rateLimitEntity.requestCount}/${rateLimiterConfig.maxRequests}" }
+            metricsService.recordRateLimitExceeded()
             throw RateLimitExceededException(
                 "Превышен лимит запросов (${rateLimiterConfig.maxRequests} в час). " +
                         "Попробуйте через $remainingTime."

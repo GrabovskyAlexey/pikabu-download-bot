@@ -21,6 +21,7 @@ private val logger = KotlinLogging.logger {}
 class VideoDownloadService(
     private val httpClient: HttpClient,
     private val errorMonitoringService: ErrorMonitoringService,
+    private val metricsService: com.pikabu.bot.service.metrics.MetricsService,
     @Value("\${app.download.max-size-mb:500}")
     private val maxSizeMb: Int,
     @Value("\${app.download.timeout-minutes:5}")
@@ -49,6 +50,7 @@ class VideoDownloadService(
                 val result = downloadVideoInternal(videoUrl, outputFile)
 
                 logger.debug { "Video downloaded successfully: ${result.sizeBytes} bytes, ${result.durationMs} ms" }
+                metricsService.recordDownloadDuration(result.durationMs)
                 return result
 
             } catch (e: DownloadException) {
@@ -66,6 +68,7 @@ class VideoDownloadService(
         // Все попытки исчерпаны
         val message = "Failed to download video after $maxRetries attempts: $videoUrl"
         logger.error { message }
+        metricsService.recordDownloadError()
 
         // Логируем ошибку
         errorMonitoringService.logError(

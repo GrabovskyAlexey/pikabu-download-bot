@@ -6,7 +6,7 @@ spring:
     name: pikabu-download-bot
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/pikabu_bot}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/pikabu_bot?currentSchema=pikabu_bot}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
@@ -19,6 +19,7 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
+        default_schema: pikabu_bot
 
   liquibase:
     enabled: true
