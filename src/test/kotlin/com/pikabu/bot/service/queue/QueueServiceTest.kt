@@ -4,6 +4,7 @@ import com.pikabu.bot.domain.model.QueueStatus
 import com.pikabu.bot.entity.DownloadQueueEntity
 import com.pikabu.bot.repository.DownloadHistoryRepository
 import com.pikabu.bot.repository.DownloadQueueRepository
+import com.pikabu.bot.service.metrics.MetricsService
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -15,11 +16,12 @@ class QueueServiceTest : FunSpec({
     lateinit var queueRepository: DownloadQueueRepository
     lateinit var historyRepository: DownloadHistoryRepository
     lateinit var service: QueueService
+    val metricsService = mockk<MetricsService>(relaxed = true)
 
     beforeEach {
         queueRepository = mockk(relaxed = true)
         historyRepository = mockk(relaxed = true)
-        service = QueueService(queueRepository, historyRepository)
+        service = QueueService(queueRepository, historyRepository, metricsService)
     }
 
     afterEach {

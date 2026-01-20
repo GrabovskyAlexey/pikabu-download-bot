@@ -5,6 +5,7 @@ import com.pikabu.bot.domain.model.ErrorType
 import com.pikabu.bot.domain.model.VideoFormat
 import com.pikabu.bot.domain.model.VideoInfo
 import com.pikabu.bot.service.admin.ErrorMonitoringService
+import com.pikabu.bot.service.metrics.MetricsService
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
@@ -23,6 +24,7 @@ class VideoParserServiceTest : FunSpec({
     lateinit var mockParser: PikabuHtmlParser
     lateinit var errorMonitoringService: ErrorMonitoringService
     lateinit var service: VideoParserService
+    val metricsService = mockk<MetricsService>(relaxed = true)
 
     beforeEach {
         mockParser = mockk(relaxed = true)
@@ -49,7 +51,8 @@ class VideoParserServiceTest : FunSpec({
                 }
             }
 
-            service = VideoParserService(httpClient, mockParser, errorMonitoringService)
+            service = VideoParserService(
+                httpClient, mockParser, errorMonitoringService, metricsService)
 
             val expectedVideos = listOf(
                 VideoInfo(
@@ -81,7 +84,7 @@ class VideoParserServiceTest : FunSpec({
             }
 
             val httpClient = HttpClient(mockEngine)
-            service = VideoParserService(httpClient, mockParser, errorMonitoringService)
+            service = VideoParserService(httpClient, mockParser, errorMonitoringService, metricsService)
 
             every { mockParser.parseVideos(any(), any()) } returns emptyList()
 
@@ -109,7 +112,7 @@ class VideoParserServiceTest : FunSpec({
             }
 
             val httpClient = HttpClient(mockEngine)
-            service = VideoParserService(httpClient, mockParser, errorMonitoringService)
+            service = VideoParserService(httpClient, mockParser, errorMonitoringService, metricsService)
 
             shouldThrow<VideoNotFoundException> {
                 service.parseVideos("https://pikabu.ru/story/test")
@@ -131,7 +134,7 @@ class VideoParserServiceTest : FunSpec({
             }
 
             val httpClient = HttpClient(mockEngine)
-            service = VideoParserService(httpClient, mockParser, errorMonitoringService)
+            service = VideoParserService(httpClient, mockParser, errorMonitoringService, metricsService)
 
             shouldThrow<VideoNotFoundException> {
                 service.parseVideos("https://pikabu.ru/story/test")

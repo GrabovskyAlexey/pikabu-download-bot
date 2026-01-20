@@ -3,6 +3,7 @@ package com.pikabu.bot.service.download
 import com.pikabu.bot.domain.exception.DownloadException
 import com.pikabu.bot.domain.model.ErrorType
 import com.pikabu.bot.service.admin.ErrorMonitoringService
+import com.pikabu.bot.service.metrics.MetricsService
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.ints.shouldBeGreaterThan
@@ -19,9 +20,11 @@ import java.io.File
 class VideoDownloadServiceTest : FunSpec({
 
     lateinit var errorMonitoringService: ErrorMonitoringService
+    lateinit var metricsService: MetricsService
 
     beforeEach {
         errorMonitoringService = mockk(relaxed = true)
+        metricsService = mockk(relaxed = true)
     }
 
     afterEach {
@@ -49,7 +52,8 @@ class VideoDownloadServiceTest : FunSpec({
                 errorMonitoringService = errorMonitoringService,
                 maxSizeMb = 500,
                 timeoutMinutes = 5,
-                maxRetries = 3
+                maxRetries = 3,
+                metricsService = metricsService
             )
 
             val tempFile = File.createTempFile("test_video", ".mp4")
@@ -89,7 +93,8 @@ class VideoDownloadServiceTest : FunSpec({
                 errorMonitoringService = errorMonitoringService,
                 maxSizeMb = 500,
                 timeoutMinutes = 5,
-                maxRetries = 3
+                maxRetries = 3,
+                metricsService = metricsService
             )
 
             val tempFile = File.createTempFile("test_video", ".mp4")
@@ -136,7 +141,8 @@ class VideoDownloadServiceTest : FunSpec({
                 errorMonitoringService = errorMonitoringService,
                 maxSizeMb = 500,
                 timeoutMinutes = 5,
-                maxRetries = 3
+                maxRetries = 3,
+                metricsService = metricsService
             )
 
             val tempFile = File.createTempFile("test_video", ".mp4")
@@ -163,7 +169,8 @@ class VideoDownloadServiceTest : FunSpec({
                 errorMonitoringService = errorMonitoringService,
                 maxSizeMb = 500,
                 timeoutMinutes = 5,
-                maxRetries = 3
+                maxRetries = 3,
+                metricsService = metricsService
             )
 
             val tempFile = File.createTempFile("test_video", ".mp4")
@@ -203,6 +210,7 @@ class VideoDownloadServiceTest : FunSpec({
                 maxSizeMb = 500,
                 timeoutMinutes = 5,
                 maxRetries = 3
+                ,metricsService = metricsService
             )
 
             val tempFile = File.createTempFile("test_video", ".mp4")

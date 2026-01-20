@@ -4,6 +4,7 @@ import com.pikabu.bot.config.RateLimiterConfig
 import com.pikabu.bot.domain.exception.RateLimitExceededException
 import com.pikabu.bot.entity.RateLimitEntity
 import com.pikabu.bot.repository.RateLimitRepository
+import com.pikabu.bot.service.metrics.MetricsService
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
@@ -16,11 +17,12 @@ class RateLimiterServiceTest : FunSpec({
     lateinit var repository: RateLimitRepository
     lateinit var config: RateLimiterConfig
     lateinit var service: RateLimiterService
+    val metricsService = mockk<MetricsService>(relaxed = true)
 
     beforeEach {
         repository = mockk(relaxed = true)
         config = RateLimiterConfig(maxRequests = 10, windowHours = 1)
-        service = RateLimiterService(repository, config)
+        service = RateLimiterService(repository, config, metricsService)
     }
 
     afterEach {
