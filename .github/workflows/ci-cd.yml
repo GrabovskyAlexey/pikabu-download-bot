@@ -209,24 +209,12 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
             cd /opt/pikabu-bot
-            IMAGE='${{ steps.img.outputs.IMAGE }}'
-            # Pull новый образ
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker pull "$IMAGE"
-
-            # Останавливаем старый контейнер
-            docker-compose down
-
-            # Запускаем новый
-            docker-compose up -d
-
-            # Проверяем статус
-            docker-compose ps
-
-            # Показываем последние логи
-            docker-compose logs --tail=50 bot
-
-            echo "Deployment completed successfully!"
+            docker compose pull
+            docker compose down
+            docker compose up -d --force-recreate
+            docker image prune -f
+            docker compose ps
+            docker compose logs --tail=30 bot
 
       - name: Verify deployment
         run: |
