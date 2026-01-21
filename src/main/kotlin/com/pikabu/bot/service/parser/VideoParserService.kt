@@ -1,8 +1,10 @@
 package com.pikabu.bot.service.parser
 
+import com.pikabu.bot.domain.exception.AuthenticationException
 import com.pikabu.bot.domain.exception.VideoNotFoundException
 import com.pikabu.bot.domain.model.ErrorType
 import com.pikabu.bot.domain.model.VideoInfo
+import com.pikabu.bot.service.admin.AdminNotificationService
 import com.pikabu.bot.service.admin.ErrorMonitoringService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.*
@@ -18,6 +20,7 @@ class VideoParserService(
     private val httpClient: HttpClient,
     private val pikabuHtmlParser: PikabuHtmlParser,
     private val errorMonitoringService: ErrorMonitoringService,
+    private val adminNotificationService: AdminNotificationService,
     private val metricsService: com.pikabu.bot.service.metrics.MetricsService
 ) {
 
@@ -33,9 +36,34 @@ class VideoParserService(
             fetchHtml(pageUrl)
         }
 
-        val videos = pikabuHtmlParser.parseVideos(html, pageUrl)
+        val allVideos = pikabuHtmlParser.parseVideos(html, pageUrl)
+
+        // Применяем приоритет: прямые видео > внешние
+        val videos = filterByPriority(allVideos)
 
         if (videos.isEmpty()) {
+            // Проверяем, требуется ли авторизация для этой страницы
+            val authRequired = pikabuHtmlParser.checkAuthenticationRequired(html)
+
+            if (authRequired) {
+                logger.warn { "Authentication required for page: $pageUrl" }
+
+                // Логируем ошибку авторизации
+                errorMonitoringService.logError(
+                    errorType = ErrorType.AUTHENTICATION_ERROR,
+                    errorMessage = "Content requires authentication (cookies expired or missing)",
+                    pageUrl = pageUrl
+                )
+
+                // Уведомляем админа о протухших cookies
+                adminNotificationService.notifyCookiesExpired(pageUrl)
+
+                throw AuthenticationException(
+                    "Видео доступно только после авторизации. Попробуйте позже.",
+                    403
+                )
+            }
+
             logger.warn { "No videos found on page: $pageUrl" }
             metricsService.recordParsingError()
 
@@ -62,21 +90,45 @@ class VideoParserService(
                 header("User-Agent", USER_AGENT)
             }
 
-            if (response.status.value !in 200..299) {
-                logger.error { "Failed to fetch page: $url, status: ${response.status}" }
+            val statusCode = response.status.value
+
+            // Проверка на ошибки авторизации
+            if (statusCode == 401 || statusCode == 403) {
+                logger.warn { "Authentication error for: $url, status: $statusCode" }
+
+                // Логируем ошибку авторизации
+                errorMonitoringService.logError(
+                    errorType = ErrorType.AUTHENTICATION_ERROR,
+                    errorMessage = "Authentication failed: HTTP $statusCode",
+                    pageUrl = url
+                )
+
+                // Уведомляем админа
+                adminNotificationService.notifyAuthenticationError(statusCode, url)
+
+                throw AuthenticationException(
+                    "Доступ к странице ограничен (HTTP $statusCode)",
+                    statusCode
+                )
+            }
+
+            if (statusCode !in 200..299) {
+                logger.error { "Failed to fetch page: $url, status: $statusCode" }
                 metricsService.recordParsingError()
 
                 // Логируем ошибку
                 errorMonitoringService.logError(
                     errorType = ErrorType.PARSING_ERROR,
-                    errorMessage = "Failed to fetch page: HTTP ${response.status.value}",
+                    errorMessage = "Failed to fetch page: HTTP $statusCode",
                     pageUrl = url
                 )
 
-                throw VideoNotFoundException("Не удалось загрузить страницу (HTTP ${response.status.value})")
+                throw VideoNotFoundException("Не удалось загрузить страницу (HTTP $statusCode)")
             }
 
             response.bodyAsText()
+        } catch (e: AuthenticationException) {
+            throw e
         } catch (e: VideoNotFoundException) {
             throw e
         } catch (e: Exception) {
@@ -92,6 +144,24 @@ class VideoParserService(
             )
 
             throw VideoNotFoundException("Ошибка при загрузке страницы: ${e.message}")
+        }
+    }
+
+    /**
+     * Применяет приоритет: прямые видео > внешние
+     * Если есть прямые видео - показываем только их
+     * Если нет прямых - показываем внешние
+     */
+    private fun filterByPriority(videos: List<VideoInfo>): List<VideoInfo> {
+        val directVideos = videos.filter { !it.isExternal }
+        val externalVideos = videos.filter { it.isExternal }
+
+        return if (directVideos.isNotEmpty()) {
+            logger.debug { "Found ${directVideos.size} direct video(s), ignoring ${externalVideos.size} external video(s)" }
+            directVideos
+        } else {
+            logger.debug { "No direct videos found, showing ${externalVideos.size} external video(s)" }
+            externalVideos
         }
     }
 }

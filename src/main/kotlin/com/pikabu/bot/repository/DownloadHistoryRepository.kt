@@ -22,4 +22,14 @@ interface DownloadHistoryRepository : JpaRepository<DownloadHistoryEntity, Long>
                 "ORDER BY e.completedAt DESC"
     )
     fun findCompletedSince(since: LocalDateTime): List<DownloadHistoryEntity>
+
+    // Методы для админ-команд
+    fun countByCreatedAtAfter(since: LocalDateTime): Long
+
+    fun countByStatus(status: String): Long
+
+    @Query("SELECT COUNT(DISTINCT e.userId) FROM DownloadHistoryEntity e")
+    fun countDistinctUsers(): Long
+
+    fun findTopByOrderByCreatedAtDesc(): DownloadHistoryEntity?
 }

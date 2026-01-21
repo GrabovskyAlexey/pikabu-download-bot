@@ -22,9 +22,12 @@ class TelegramSenderService(
     private val telegramClient: TelegramClient
 ) {
 
-    fun sendMessage(chatId: Long, text: String): Int? {
+    fun sendMessage(chatId: Long, text: String, parseMode: String? = null): Int? {
         return try {
             val message = SendMessage(chatId.toString(), text)
+            if (parseMode != null) {
+                message.parseMode = parseMode
+            }
             val response = telegramClient.execute(message)
             logger.debug { "Message sent to chat $chatId" }
             response.messageId

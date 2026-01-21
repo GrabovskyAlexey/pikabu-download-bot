@@ -1,6 +1,8 @@
 package com.pikabu.bot.service.parser
 
+import com.pikabu.bot.domain.model.VideoFormat
 import com.pikabu.bot.domain.model.VideoInfo
+import com.pikabu.bot.domain.model.VideoPlatform
 import com.pikabu.bot.domain.model.toVideoFormat
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.jsoup.Jsoup
@@ -33,6 +35,9 @@ class PikabuHtmlParser {
         // Стратегия 3: Regex поиск в inline JavaScript
         videos.addAll(parseInlineScripts(html, pageUrl))
 
+        // Стратегия 4: Iframe и embed теги (внешние видео)
+        videos.addAll(parseIframeVideos(document))
+
         // Удаляем дубликаты по URL и группируем по базовому имени файла
         val uniqueVideos = videos
             .distinctBy { it.url } // Убираем полные дубликаты
@@ -53,6 +58,48 @@ class PikabuHtmlParser {
             logger.debug { "Video #${index + 1}: ${video.url} (format: ${video.format}, title: ${video.title})" }
         }
         return uniqueVideos
+    }
+
+    /**
+     * Проверяет требуется ли авторизация для просмотра контента на странице
+     * Возвращает true если обнаружены признаки требования авторизации
+     */
+    fun checkAuthenticationRequired(html: String): Boolean {
+        logger.debug { "Checking if authentication is required" }
+
+        // Признак 1: Текст с призывом авторизоваться
+        val authPhrases = listOf(
+            "Авторизуйтесь или зарегистрируйтесь",
+            "Авторизуйтесь",
+            "Войти / Зарегистрироваться",
+            "Требуется авторизация"
+        )
+        val hasAuthPrompt = authPhrases.any { phrase ->
+            html.contains(phrase, ignoreCase = true)
+        }
+
+        // Признак 2: userID: 0 (неавторизованный пользователь)
+        val hasUnauthorizedUser = html.contains(""""userID":0""") ||
+                                   html.contains(""""userID": 0""")
+
+        // Признак 3: Маркеры NSFW/18+ контента
+        val hasNsfwContent = html.contains("NSFW-контента (18+)", ignoreCase = true) ||
+                             html.contains("[18+]", ignoreCase = false) ||
+                             html.contains("adult-content", ignoreCase = true)
+
+        val isAuthRequired = (hasAuthPrompt && hasUnauthorizedUser) ||
+                             (hasNsfwContent && hasUnauthorizedUser)
+
+        if (isAuthRequired) {
+            logger.info {
+                "Authentication required detected: " +
+                "authPrompt=$hasAuthPrompt, " +
+                "unauthorizedUser=$hasUnauthorizedUser, " +
+                "nsfwContent=$hasNsfwContent"
+            }
+        }
+
+        return isAuthRequired
     }
 
     /**
@@ -219,5 +266,171 @@ class PikabuHtmlParser {
         return url
             .substringAfterLast('/')
             .substringBeforeLast('.')
+    }
+
+    /**
+     * Стратегия 4: Поиск внешних видео (vue-video-player с data-source)
+     */
+    private fun parseIframeVideos(document: Document): List<VideoInfo> {
+        val videos = mutableListOf<VideoInfo>()
+
+        logger.debug { "Strategy 4: Parsing vue-video-player with data-source" }
+
+        // Pikabu использует Vue.js с lazy loading - iframe создаётся при клике на play
+        // В исходном HTML есть div.vue-video-player с data-source
+        document.select("div.vue-video-player[data-source]").forEach { player ->
+            val dataSource = player.attr("data-source")
+
+            extractExternalVideoUrl(dataSource)?.let { externalUrl ->
+                videos.add(
+                    VideoInfo(
+                        url = externalUrl,
+                        title = null,
+                        isExternal = true,
+                        platform = detectPlatform(externalUrl),
+                        format = VideoFormat.UNKNOWN
+                    )
+                )
+                logger.debug { "Found external video in vue-video-player: $externalUrl (platform: ${detectPlatform(externalUrl)})" }
+            }
+        }
+
+        // Также ищем старый формат iframe (на всякий случай)
+        document.select("iframe[src]").forEach { iframe ->
+            val src = iframe.attr("src")
+            val title = iframe.attr("title")
+
+            extractExternalVideoUrl(src)?.let { externalUrl ->
+                videos.add(
+                    VideoInfo(
+                        url = externalUrl,
+                        title = title.ifBlank { null },
+                        isExternal = true,
+                        platform = detectPlatform(externalUrl),
+                        format = VideoFormat.UNKNOWN
+                    )
+                )
+                logger.debug { "Found external video in iframe: $externalUrl (platform: ${detectPlatform(externalUrl)})" }
+            }
+        }
+
+        logger.debug { "Strategy 4 found ${videos.size} external video(s)" }
+        return videos
+    }
+
+    /**
+     * Извлекает URL внешнего видео из embed URL
+     * Конвертирует embed URL в watch URL
+     */
+    private fun extractExternalVideoUrl(embedUrl: String): String? {
+        logger.debug { "Extracting external video URL from: $embedUrl" }
+
+        return when {
+            // YouTube: youtube.com/embed/VIDEO_ID -> youtube.com/watch?v=VIDEO_ID
+            embedUrl.contains("youtube.com/embed/") -> {
+                val videoId = embedUrl.substringAfter("youtube.com/embed/")
+                    .substringBefore("?")
+                    .substringBefore("/")
+                if (videoId.isNotBlank()) {
+                    "https://www.youtube.com/watch?v=$videoId"
+                } else null
+            }
+
+            // YouTube короткий формат: youtu.be/VIDEO_ID
+            embedUrl.contains("youtu.be/") -> {
+                val videoId = embedUrl.substringAfter("youtu.be/")
+                    .substringBefore("?")
+                    .substringBefore("/")
+                if (videoId.isNotBlank()) {
+                    "https://www.youtube.com/watch?v=$videoId"
+                } else null
+            }
+
+            // RuTube: rutube.ru/play/embed/VIDEO_ID -> rutube.ru/video/VIDEO_ID
+            embedUrl.contains("rutube.ru/play/embed/") -> {
+                val videoId = embedUrl.substringAfter("rutube.ru/play/embed/")
+                    .substringBefore("?")
+                    .substringBefore("/")
+                if (videoId.isNotBlank()) {
+                    "https://rutube.ru/video/$videoId/"
+                } else null
+            }
+
+            // RuTube уже в правильном формате: rutube.ru/video/VIDEO_ID
+            embedUrl.contains("rutube.ru/video/") -> {
+                val videoId = embedUrl.substringAfter("rutube.ru/video/")
+                    .substringBefore("?")
+                    .substringBefore("/")
+                if (videoId.isNotBlank()) {
+                    "https://rutube.ru/video/$videoId/"
+                } else null
+            }
+
+            // VK: vk.com/video_ext.php?oid=X&id=Y -> vk.com/video-X_Y
+            embedUrl.contains("vk.com/video_ext.php") || embedUrl.contains("vk.ru/video_ext.php") -> {
+                parseVkVideoUrl(embedUrl)
+            }
+
+            // VK уже в правильном формате: vk.com/video-X_Y
+            embedUrl.contains("vk.com/video") || embedUrl.contains("vk.ru/video") -> {
+                val result = if (embedUrl.startsWith("http://") || embedUrl.startsWith("https://")) {
+                    embedUrl.substringBefore("?") // Убираем query параметры
+                } else {
+                    "https://$embedUrl".substringBefore("?")
+                }
+                logger.info { "VK video URL already in correct format: $result" }
+                result
+            }
+
+            else -> {
+                logger.debug { "Unknown external video URL format: $embedUrl" }
+                null
+            }
+        }
+    }
+
+    /**
+     * Парсит VK video_ext.php URL в формат videoOID_ID
+     */
+    private fun parseVkVideoUrl(url: String): String? {
+        return try {
+            // Используем URI для правильного парсинга query параметров
+            val uri = URI(url)
+            val params = uri.query?.split("&")
+                ?.mapNotNull { param ->
+                    val parts = param.split("=", limit = 2)
+                    if (parts.size == 2) parts[0] to parts[1] else null
+                }
+                ?.toMap() ?: emptyMap()
+
+            val oid = params["oid"]
+            val id = params["id"]
+
+            logger.debug { "Parsing VK URL: oid='$oid', id='$id' from: $url" }
+
+            if (!oid.isNullOrBlank() && !id.isNullOrBlank()) {
+                val result = "https://vk.com/video${oid}_$id"
+                logger.info { "Parsed VK video URL: $result (from embed: $url)" }
+                result
+            } else {
+                logger.warn { "Failed to parse VK URL: oid or id is blank. oid='$oid', id='$id'" }
+                null
+            }
+        } catch (e: Exception) {
+            logger.warn(e) { "Failed to parse VK video URL: $url" }
+            null
+        }
+    }
+
+    /**
+     * Определяет платформу видео по URL
+     */
+    private fun detectPlatform(url: String): VideoPlatform {
+        return when {
+            url.contains("youtube.com") || url.contains("youtu.be") -> VideoPlatform.YOUTUBE
+            url.contains("rutube.ru") -> VideoPlatform.RUTUBE
+            url.contains("vk.com") || url.contains("vk.ru") -> VideoPlatform.VKVIDEO
+            else -> VideoPlatform.PIKABU
+        }
     }
 }

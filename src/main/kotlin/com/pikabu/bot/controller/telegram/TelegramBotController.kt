@@ -1,6 +1,7 @@
 package com.pikabu.bot.controller.telegram
 
 import com.pikabu.bot.config.TelegramBotConfig
+import com.pikabu.bot.domain.exception.AuthenticationException
 import com.pikabu.bot.domain.exception.InvalidUrlException
 import com.pikabu.bot.domain.exception.RateLimitExceededException
 import com.pikabu.bot.domain.exception.VideoNotFoundException
@@ -8,6 +9,8 @@ import com.pikabu.bot.service.parser.VideoParserService
 import com.pikabu.bot.service.cache.VideoCacheService
 import com.pikabu.bot.service.queue.QueueService
 import com.pikabu.bot.service.ratelimit.RateLimiterService
+import com.pikabu.bot.service.telegram.AdminState
+import com.pikabu.bot.service.telegram.AdminStateService
 import com.pikabu.bot.service.telegram.MessageUpdaterService
 import com.pikabu.bot.service.telegram.TelegramSenderService
 import com.pikabu.bot.service.telegram.VideoSelectionCache
@@ -24,6 +27,8 @@ class TelegramBotController(
     private val botConfig: TelegramBotConfig,
     private val telegramSenderService: TelegramSenderService,
     private val callbackQueryHandler: CallbackQueryHandler,
+    private val adminCommandHandler: AdminCommandHandler,
+    private val adminStateService: AdminStateService,
     private val urlValidationService: UrlValidationService,
     private val videoParserService: VideoParserService,
     private val queueService: QueueService,
@@ -52,11 +57,42 @@ class TelegramBotController(
 
         logger.debug { "Received message from user $chatId: $text" }
 
+        // Проверяем состояние админа (диалоговый режим)
+        // Если это команда (начинается с "/") - обрабатываем как команду, иначе как ввод данных
+        if (adminCommandHandler.isAdmin(chatId) && adminStateService.hasState(chatId) && !text.startsWith("/")) {
+            handleAdminStateMessage(chatId, text)
+            return
+        }
+
         when {
             text.startsWith("/start") -> handleStartCommand(chatId)
             text.startsWith("/help") -> handleHelpCommand(chatId)
             text.startsWith("http") -> handleUrlMessage(chatId, text, message.messageId)
+            text.startsWith("/") -> {
+                // Пытаемся обработать как админ-команду
+                val handled = adminCommandHandler.handleAdminCommand(chatId, text)
+                if (!handled) {
+                    handleUnknownMessage(chatId)
+                }
+            }
             else -> handleUnknownMessage(chatId)
+        }
+    }
+
+    /**
+     * Обрабатывает сообщения от админа когда он находится в диалоговом режиме
+     */
+    private fun handleAdminStateMessage(chatId: Long, text: String) {
+        when (val state = adminStateService.getState(chatId)) {
+            AdminState.WAITING_FOR_COOKIES -> {
+                // Админ отправил cookies
+                adminCommandHandler.handleCookieInput(chatId, text)
+            }
+            null -> {
+                // Состояние было очищено в другом месте
+                logger.debug { "Admin $chatId had no state, processing as normal message" }
+                handleUnknownMessage(chatId)
+            }
         }
     }
 
@@ -73,22 +109,40 @@ class TelegramBotController(
     }
 
     private fun handleHelpCommand(chatId: Long) {
-        val helpMessage = """
-            Как пользоваться ботом:
+        val helpMessage = buildString {
+            append("""
+                Как пользоваться ботом:
 
-            1. Отправь мне ссылку на пост с Pikabu.ru
-            2. Если на странице несколько видео, выбери нужное
-            3. Дождись загрузки видео
+                1. Отправь мне ссылку на пост с Pikabu.ru
+                2. Если на странице несколько видео, выбери нужное
+                3. Дождись загрузки видео
 
-            Ограничения:
-            - Работаю только с pikabu.ru
-            - Максимальный размер видео: 500 МБ
-            - Лимит запросов: 1000 в час
+                Ограничения:
+                - Работаю только с pikabu.ru
+                - Максимальный размер видео: 500 МБ
+                - Лимит запросов: 1000 в час
 
-            Команды:
-            /start - начало работы
-            /help - справка
-        """.trimIndent()
+                Команды:
+                /start - начало работы
+                /help - справка
+            """.trimIndent())
+
+            // Добавляем админские команды для админа
+            if (adminCommandHandler.isAdmin(chatId)) {
+                append("""
+
+
+                    👨‍💼 Админ-команды:
+                    /stats - общая статистика
+                    /health - состояние системы
+                    /queue - состояние очереди
+                    /cache - статистика кэша
+                    /errors [limit] - последние ошибки
+                    /auth_status - статус авторизации Pikabu
+                    /update_auth - обновить cookies
+                """.trimIndent())
+            }
+        }
 
         telegramSenderService.sendMessage(chatId, helpMessage)
     }
@@ -153,6 +207,13 @@ class TelegramBotController(
         } catch (e: RateLimitExceededException) {
             logger.warn { "Rate limit exceeded for user $chatId: ${e.message}" }
             telegramSenderService.sendMessage(chatId, "⏱️ ${e.message}")
+        } catch (e: AuthenticationException) {
+            logger.warn { "Authentication error for user $chatId: ${e.message}" }
+            telegramSenderService.sendMessage(
+                chatId,
+                "❌ Видео доступно только для авторизованных пользователей. " +
+                "Попробуйте позже."
+            )
         } catch (e: InvalidUrlException) {
             logger.warn { "Invalid URL from user $chatId: ${e.message}" }
             telegramSenderService.sendMessage(chatId, "❌ ${e.message}")

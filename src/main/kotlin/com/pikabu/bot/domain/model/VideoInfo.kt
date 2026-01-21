@@ -4,7 +4,9 @@ data class VideoInfo(
     val url: String,
     val title: String? = null,
     val thumbnailUrl: String? = null,
-    val format: VideoFormat = VideoFormat.UNKNOWN
+    val format: VideoFormat = VideoFormat.UNKNOWN,
+    val isExternal: Boolean = false,
+    val platform: VideoPlatform = VideoPlatform.PIKABU
 )
 
 enum class VideoFormat {
