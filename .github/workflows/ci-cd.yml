@@ -138,10 +138,35 @@ jobs:
         run: ./gradlew ktlintCheck --no-daemon || true
         continue-on-error: true
 
+  tag:
+    name: Generate tag
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: ver
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          last_tag="$(git tag -l 'v*' --sort=-v:refname | head -n1 || true)"
+          [ -z "$last_tag" ] && last_tag="v0.0.0"
+          IFS='.' read -r major minor patch <<< "${last_tag#v}"
+          new_tag="v${major}.${minor}.$((patch + 1))"
+          git tag "$new_tag"
+          git push origin "$new_tag"
+          echo "version=$new_tag" >> "$GITHUB_OUTPUT"
+
   docker:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
-    needs: [test, build]
+    needs: [test, build, tag]
     if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
 
     permissions:
@@ -168,9 +193,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
+            type=raw,value=${{ needs.tag.outputs.version }}
             type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=,format=short
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -196,10 +221,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Compute image name
-        id: img
-        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}:latest" >> "$GITHUB_OUTPUT"
-
       - name: Deploy to server via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -209,24 +230,12 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
             cd /opt/pikabu-bot
-            IMAGE='${{ steps.img.outputs.IMAGE }}'
-            # Pull новый образ
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker pull "$IMAGE"
-
-            # Останавливаем старый контейнер
-            docker-compose down
-
-            # Запускаем новый
-            docker-compose up -d
-
-            # Проверяем статус
-            docker-compose ps
-
-            # Показываем последние логи
-            docker-compose logs --tail=50 bot
-
-            echo "Deployment completed successfully!"
+            docker compose pull
+            docker compose down
+            docker compose up -d --force-recreate
+            docker image prune -f
+            docker compose ps
+            docker compose logs --tail=30 bot
 
       - name: Verify deployment
         run: |
