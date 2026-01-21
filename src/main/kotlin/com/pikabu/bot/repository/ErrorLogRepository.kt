@@ -1,6 +1,7 @@
 package com.pikabu.bot.repository
 
 import com.pikabu.bot.entity.ErrorLogEntity
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.stereotype.Repository
@@ -35,4 +36,9 @@ interface ErrorLogRepository : JpaRepository<ErrorLogEntity, Long> {
 
     @Query("SELECT COUNT(e) FROM ErrorLogEntity e WHERE e.errorType = :errorType AND e.occurredAt >= :since")
     fun countByErrorTypeSince(errorType: String, since: LocalDateTime): Long
+
+    // Методы для админ-команд
+    fun findAllByOrderByOccurredAtDesc(pageable: Pageable): List<ErrorLogEntity>
+
+    fun findTopByOrderByOccurredAtDesc(): ErrorLogEntity?
 }

@@ -14,6 +14,8 @@ private val logger = KotlinLogging.logger {}
 @Service
 class DownloadOrchestrator(
     private val streamingDownloader: StreamingDownloader,
+    private val externalVideoDownloadService: ExternalVideoDownloadService,
+    private val videoParserService: com.pikabu.bot.service.parser.VideoParserService,
     private val queueService: QueueService,
     private val telegramSenderService: TelegramSenderService,
     private val videoCacheService: VideoCacheService,
@@ -59,13 +61,32 @@ class DownloadOrchestrator(
                 )
             } else {
                 metricsService.recordCacheMiss()
-                // Кэша нет - загружаем и отправляем
-                val downloadResult = streamingDownloader.downloadAndSend(
-                    videoUrl = queueEntity.videoUrl,
-                    chatId = queueEntity.userId,
-                    videoTitle = queueEntity.videoTitle,
-                    replyToMessageId = null
-                )
+
+                // Определяем тип видео по URL (внешнее или прямое)
+                val isExternal = isExternalVideoUrl(queueEntity.videoUrl)
+                val platform = detectPlatformFromUrl(queueEntity.videoUrl)
+
+                val downloadResult = if (isExternal) {
+                    // Внешнее видео - используем yt-dlp
+                    logger.debug { "Downloading external video from $platform: ${queueEntity.videoUrl}" }
+
+                    downloadExternalVideo(
+                        videoUrl = queueEntity.videoUrl,
+                        chatId = queueEntity.userId,
+                        videoTitle = queueEntity.videoTitle,
+                        platform = platform
+                    )
+                } else {
+                    // Прямое видео - используем streaming downloader
+                    logger.debug { "Downloading direct video: ${queueEntity.videoUrl}" }
+
+                    streamingDownloader.downloadAndSend(
+                        videoUrl = queueEntity.videoUrl,
+                        chatId = queueEntity.userId,
+                        videoTitle = queueEntity.videoTitle,
+                        replyToMessageId = null
+                    )
+                }
 
                 success = downloadResult.success
 
@@ -133,14 +154,152 @@ class DownloadOrchestrator(
             queueService.archiveToHistory(failedEntity)
         }
 
-        // Уведомляем пользователя
-        val userMessage = buildString {
-            append("❌ Не удалось загрузить видео.\n\n")
-            append("Причина: $errorMessage\n\n")
-            append("Попробуйте позже или отправьте другую ссылку.")
-        }
+        // Уведомляем пользователя понятным сообщением (без технических деталей)
+        val userFriendlyMessage = translateErrorToUserMessage(errorMessage)
+        telegramSenderService.sendMessage(queueEntity.userId, userFriendlyMessage)
+    }
 
-        telegramSenderService.sendMessage(queueEntity.userId, userMessage)
+    /**
+     * Переводит техническую ошибку в понятное пользователю сообщение
+     */
+    private fun translateErrorToUserMessage(technicalError: String): String {
+        return when {
+            // Ошибки размера
+            technicalError.contains("exceeds size limit", ignoreCase = true) ||
+            technicalError.contains("too large", ignoreCase = true) -> {
+                "❌ Видео слишком большое (лимит 500 МБ).\n\n" +
+                "Попробуйте другое видео."
+            }
+
+            // Таймаут
+            technicalError.contains("timeout", ignoreCase = true) ||
+            technicalError.contains("timed out", ignoreCase = true) -> {
+                "❌ Превышено время ожидания загрузки.\n\n" +
+                "Видео слишком долго загружается. Попробуйте позже."
+            }
+
+            // Недоступность видео
+            technicalError.contains("not available", ignoreCase = true) ||
+            technicalError.contains("unavailable", ignoreCase = true) ||
+            technicalError.contains("removed", ignoreCase = true) ||
+            technicalError.contains("deleted", ignoreCase = true) -> {
+                "❌ Видео недоступно.\n\n" +
+                "Возможно, оно было удалено или ограничено автором."
+            }
+
+            // Ошибки сети
+            technicalError.contains("network", ignoreCase = true) ||
+            technicalError.contains("connection", ignoreCase = true) ||
+            technicalError.contains("failed to fetch", ignoreCase = true) -> {
+                "❌ Ошибка сети при загрузке видео.\n\n" +
+                "Попробуйте ещё раз через несколько минут."
+            }
+
+            // Ограничения платформы (geo-block, private, etc)
+            technicalError.contains("geo", ignoreCase = true) ||
+            technicalError.contains("region", ignoreCase = true) ||
+            technicalError.contains("private", ignoreCase = true) ||
+            technicalError.contains("restricted", ignoreCase = true) -> {
+                "❌ Видео недоступно для загрузки.\n\n" +
+                "Возможно, оно приватное или ограничено по региону."
+            }
+
+            // Ошибки отправки в Telegram
+            technicalError.contains("failed to send", ignoreCase = true) ||
+            technicalError.contains("telegram", ignoreCase = true) -> {
+                "❌ Не удалось отправить видео в Telegram.\n\n" +
+                "Попробуйте позже или отправьте другую ссылку."
+            }
+
+            // Общая ошибка (без технических деталей)
+            else -> {
+                "❌ Не удалось загрузить видео.\n\n" +
+                "Попробуйте позже или отправьте другую ссылку."
+            }
+        }
+    }
+
+    /**
+     * Проверяет является ли URL внешним видео
+     */
+    private fun isExternalVideoUrl(url: String): Boolean {
+        return url.contains("youtube.com") ||
+               url.contains("youtu.be") ||
+               url.contains("rutube.ru") ||
+               url.contains("vk.com") ||
+               url.contains("vk.ru")
+    }
+
+    /**
+     * Определяет платформу видео по URL
+     */
+    private fun detectPlatformFromUrl(url: String): com.pikabu.bot.domain.model.VideoPlatform {
+        return when {
+            url.contains("youtube.com") || url.contains("youtu.be") ->
+                com.pikabu.bot.domain.model.VideoPlatform.YOUTUBE
+            url.contains("rutube.ru") ->
+                com.pikabu.bot.domain.model.VideoPlatform.RUTUBE
+            url.contains("vk.com") || url.contains("vk.ru") ->
+                com.pikabu.bot.domain.model.VideoPlatform.VKVIDEO
+            else ->
+                com.pikabu.bot.domain.model.VideoPlatform.PIKABU
+        }
+    }
+
+    /**
+     * Загружает внешнее видео через yt-dlp и отправляет в Telegram
+     */
+    private suspend fun downloadExternalVideo(
+        videoUrl: String,
+        chatId: Long,
+        videoTitle: String?,
+        platform: com.pikabu.bot.domain.model.VideoPlatform
+    ): StreamingDownloader.SendResult {
+        val tempFile = kotlin.io.path.createTempFile("pikabu_external", ".mp4").toFile()
+
+        return try {
+            // Скачиваем видео через yt-dlp
+            externalVideoDownloadService.downloadExternalVideo(videoUrl, tempFile, platform)
+
+            // Формируем caption
+            val caption = buildVideoCaption(videoTitle, tempFile.length())
+
+            // Отправляем в Telegram
+            val fileId = telegramSenderService.sendVideo(
+                chatId = chatId,
+                videoFile = tempFile,
+                caption = caption,
+                replyToMessageId = null
+            )
+
+            val success = fileId != null
+
+            StreamingDownloader.SendResult(
+                success = success,
+                fileId = fileId,
+                fileSize = tempFile.length()
+            )
+        } finally {
+            // Удаляем временный файл
+            if (tempFile.exists()) {
+                tempFile.delete()
+                logger.debug { "Deleted temporary file: ${tempFile.absolutePath}" }
+            }
+        }
+    }
+
+    /**
+     * Формирует caption для видео
+     */
+    private fun buildVideoCaption(videoTitle: String?, fileSize: Long): String {
+        return buildString {
+            if (videoTitle != null) {
+                append("📹 $videoTitle\n\n")
+            }
+            val sizeMb = fileSize / (1024.0 * 1024.0)
+            append("✅ Загружено: %.2f МБ\n\n".format(sizeMb))
+            append("Спасибо что воспользовались @${botConfig.username}")
+        }
     }
 
     /**

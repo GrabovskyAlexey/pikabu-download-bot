@@ -133,6 +133,70 @@ class AdminNotificationService(
     }
 
     /**
+     * Отправляет уведомление об ошибке авторизации
+     */
+    fun notifyAuthenticationError(statusCode: Int, url: String) {
+        if (!adminConfig.enableNotifications || adminConfig.userId == 0L) {
+            logger.debug { "Admin notifications disabled or admin ID not configured" }
+            return
+        }
+
+        val message = buildString {
+            append("🔒 ОШИБКА АВТОРИЗАЦИИ\n\n")
+            append("HTTP Status: $statusCode\n")
+            append("📄 URL: $url\n\n")
+            append("Возможные причины:\n")
+            when (statusCode) {
+                401 -> {
+                    append("• Cookies истекли или невалидны\n")
+                    append("• Требуется повторная авторизация\n\n")
+                    append("Рекомендация: Обновите cookies через /update_auth")
+                }
+                403 -> {
+                    append("• Доступ запрещён\n")
+                    append("• Контент может быть приватным\n")
+                    append("• Cookies могут быть устаревшими\n\n")
+                    append("Рекомендация: Проверьте cookies через /update_auth")
+                }
+            }
+        }
+
+        sendNotification(message)
+    }
+
+    /**
+     * Отправляет уведомление о протухших cookies
+     * Вызывается когда страница загрузилась, но контент требует авторизации
+     */
+    fun notifyCookiesExpired(url: String) {
+        if (!adminConfig.enableNotifications || adminConfig.userId == 0L) {
+            logger.debug { "Admin notifications disabled or admin ID not configured" }
+            return
+        }
+
+        val message = buildString {
+            append("🔑 COOKIES ПРОТУХЛИ\n\n")
+            append("Обнаружен контент, требующий авторизации:\n")
+            append("📄 URL: $url\n\n")
+            append("Признаки:\n")
+            append("• Страница загрузилась (HTTP 200)\n")
+            append("• Но контент показывает призыв авторизоваться\n")
+            append("• userID: 0 (неавторизованный пользователь)\n")
+            append("• Возможно, это NSFW/18+ контент\n\n")
+            append("⚠️ Действие требуется:\n")
+            append("Обновите cookies Pikabu через команду /update_auth\n\n")
+            append("Как получить cookies:\n")
+            append("1. Откройте pikabu.ru в браузере\n")
+            append("2. Авторизуйтесь\n")
+            append("3. F12 → Application → Cookies\n")
+            append("4. Скопируйте PHPSESS\n")
+            append("5. Отправьте мне через /update_auth")
+        }
+
+        sendNotification(message)
+    }
+
+    /**
      * Отправляет произвольное уведомление админу
      */
     fun sendNotification(message: String) {

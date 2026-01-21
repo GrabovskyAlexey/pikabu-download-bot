@@ -41,14 +41,32 @@ management:
 
 logging:
   level:
-    root: INFO
-    com.pikabu.bot: INFO
-    com.pikabu.bot.service.parser: DEBUG
+    root: ${LOGGING_LEVEL_ROOT:INFO}
+    com.pikabu.bot: ${LOGGING_LEVEL_APP:INFO}
+    com.pikabu.bot.service.parser: ${LOGGING_LEVEL_PARSER:DEBUG}
+    com.pikabu.bot.service.download: ${LOGGING_LEVEL_DOWNLOAD:INFO}
+    com.pikabu.bot.service.queue: ${LOGGING_LEVEL_QUEUE:INFO}
+  file:
+    name: ${LOGGING_FILE_PATH:./logs/pikabu-bot.log}
+  logback:
+    rollingpolicy:
+      max-file-size: ${LOGGING_MAX_FILE_SIZE:100MB}
+      max-history: ${LOGGING_MAX_HISTORY:30}
+      total-size-cap: ${LOGGING_TOTAL_SIZE_CAP:3GB}
+      file-name-pattern: ${LOGGING_FILE_PATH:./logs/pikabu-bot}-%d{yyyy-MM-dd}.%i.log
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p %6r --- [%15.15t] %-40.40logger{39} : %m%n%wEx"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p %6r --- [%15.15t] %-40.40logger{39} : %m%n%wEx"
 
 telegram:
   bot:
     token: ${BOT_TOKEN}
     username: ${BOT_USERNAME}
+
+pikabu:
+  auth:
+    enabled: ${PIKABU_AUTH_ENABLED:false}
+    cookies: ${PIKABU_AUTH_COOKIES:}
 
 app:
   admin:
@@ -62,6 +80,7 @@ app:
   download:
     max-size-mb: 500
     timeout-minutes: 5
+    external-timeout-minutes: ${APP_EXTERNAL_DOWNLOAD_TIMEOUT_MINUTES:20}
     max-retries: 3
   error-monitoring:
     parsing-error-threshold: 5

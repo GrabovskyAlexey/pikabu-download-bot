@@ -19,6 +19,15 @@ RUN gradle bootJar --no-daemon
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
+# Install yt-dlp and ffmpeg for external video downloads
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    ffmpeg \
+    && pip3 install --no-cache-dir --break-system-packages yt-dlp \
+    && yt-dlp --version \
+    && ffmpeg -version
+
 # Add non-root user for security
 RUN addgroup -S spring && adduser -S spring -G spring
 USER spring:spring

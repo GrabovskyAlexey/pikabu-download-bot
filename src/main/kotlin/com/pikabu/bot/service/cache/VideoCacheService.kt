@@ -68,6 +68,20 @@ class VideoCacheService(
     }
 
     /**
+     * Получает количество записей в кэше
+     */
+    fun getCacheSize(): Long {
+        return videoCacheRepository.count()
+    }
+
+    /**
+     * Получает все записи кэша
+     */
+    fun getAllCacheEntries(): List<VideoCacheEntity> {
+        return videoCacheRepository.findAll()
+    }
+
+    /**
      * Очищает старые записи кэша (старше 30 дней)
      * Запускается раз в день в 3:00
      */
