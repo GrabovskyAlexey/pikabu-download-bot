@@ -9,7 +9,7 @@ version: '3.9'
 
 services:
   bot:
-    image: ghcr.io/yourusername/pikabu-download-bot:latest
+    image: ghcr.io/grabovskyalexey/pikabu-download-bot:latest
     container_name: pikabu-bot
     restart: unless-stopped
 
@@ -31,6 +31,7 @@ services:
       - ADMIN_USER_ID=${ADMIN_USER_ID}
       - ADMIN_ENABLE_NOTIFICATIONS=${ADMIN_ENABLE_NOTIFICATIONS:-true}
       - ADMIN_ENABLE_DAILY_DIGEST=${ADMIN_ENABLE_DAILY_DIGEST:-false}
+      - ADMIN_ENABLE_WEEKLY_DIGEST=${ADMIN_ENABLE_WEEKLY_DIGEST:-false}
 
       # Database connection к внешней БД
       - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}

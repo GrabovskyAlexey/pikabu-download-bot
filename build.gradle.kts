@@ -46,6 +46,9 @@ dependencies {
     // HTML Parser - Jsoup
     implementation("org.jsoup:jsoup:1.18.3")
 
+    // Template Engine - FreeMarker
+    implementation("org.springframework.boot:spring-boot-starter-freemarker")
+
     // Database
     implementation("org.postgresql:postgresql")
     implementation("org.liquibase:liquibase-core")

@@ -32,4 +32,16 @@ interface DownloadHistoryRepository : JpaRepository<DownloadHistoryEntity, Long>
     fun countDistinctUsers(): Long
 
     fun findTopByOrderByCreatedAtDesc(): DownloadHistoryEntity?
+
+    @Query(
+        """
+        SELECT e.videoUrl, e.videoTitle, COUNT(e) as downloadCount
+        FROM DownloadHistoryEntity e
+        WHERE e.completedAt >= :since
+        AND e.status = 'COMPLETED'
+        GROUP BY e.videoUrl, e.videoTitle
+        ORDER BY COUNT(e) DESC
+        """
+    )
+    fun findTopVideosSince(since: LocalDateTime, pageable: org.springframework.data.domain.Pageable): List<Array<Any>>
 }

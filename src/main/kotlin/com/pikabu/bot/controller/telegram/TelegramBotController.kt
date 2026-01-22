@@ -14,6 +14,7 @@ import com.pikabu.bot.service.telegram.AdminStateService
 import com.pikabu.bot.service.telegram.MessageUpdaterService
 import com.pikabu.bot.service.telegram.TelegramSenderService
 import com.pikabu.bot.service.telegram.VideoSelectionCache
+import com.pikabu.bot.service.template.MessageTemplateService
 import com.pikabu.bot.service.validation.UrlValidationService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.stereotype.Component
@@ -35,7 +36,8 @@ class TelegramBotController(
     private val messageUpdaterService: MessageUpdaterService,
     private val rateLimiterService: RateLimiterService,
     private val videoSelectionCache: VideoSelectionCache,
-    private val videoCacheService: VideoCacheService
+    private val videoCacheService: VideoCacheService,
+    private val messageTemplateService: MessageTemplateService
 ) : LongPollingSingleThreadUpdateConsumer {
 
     override fun consume(update: Update) {
@@ -97,52 +99,14 @@ class TelegramBotController(
     }
 
     private fun handleStartCommand(chatId: Long) {
-        val welcomeMessage = """
-            Привет! Я бот для скачивания видео с Pikabu.ru
-
-            Просто отправь мне ссылку на пост с Pikabu, и я скачаю видео для тебя.
-
-            Используй /help для получения дополнительной информации.
-        """.trimIndent()
-
+        val welcomeMessage = messageTemplateService.renderMessage("start.ftl")
         telegramSenderService.sendMessage(chatId, welcomeMessage)
     }
 
     private fun handleHelpCommand(chatId: Long) {
-        val helpMessage = buildString {
-            append("""
-                Как пользоваться ботом:
-
-                1. Отправь мне ссылку на пост с Pikabu.ru
-                2. Если на странице несколько видео, выбери нужное
-                3. Дождись загрузки видео
-
-                Ограничения:
-                - Работаю только с pikabu.ru
-                - Максимальный размер видео: 500 МБ
-                - Лимит запросов: 1000 в час
-
-                Команды:
-                /start - начало работы
-                /help - справка
-            """.trimIndent())
-
-            // Добавляем админские команды для админа
-            if (adminCommandHandler.isAdmin(chatId)) {
-                append("""
-
-
-                    👨‍💼 Админ-команды:
-                    /stats - общая статистика
-                    /health - состояние системы
-                    /queue - состояние очереди
-                    /cache - статистика кэша
-                    /errors [limit] - последние ошибки
-                    /auth_status - статус авторизации Pikabu
-                    /update_auth - обновить cookies
-                """.trimIndent())
-            }
-        }
+        val helpMessage = messageTemplateService.renderMessage("help.ftl", mapOf(
+            "isAdmin" to adminCommandHandler.isAdmin(chatId)
+        ))
 
         telegramSenderService.sendMessage(chatId, helpMessage)
     }
@@ -162,7 +126,8 @@ class TelegramBotController(
 
             when {
                 videos.isEmpty() -> {
-                    telegramSenderService.sendMessage(chatId, "На странице не найдено видео")
+                    val message = messageTemplateService.renderMessage("no-video-found.ftl")
+                    telegramSenderService.sendMessage(chatId, message)
                 }
                 videos.size == 1 -> {
                     // Одно видео - проверяем кэш
@@ -175,7 +140,11 @@ class TelegramBotController(
 
                         // Получаем размер из кэша для caption
                         val cacheEntry = videoCacheService.getCacheEntry(video.url)
-                        val caption = buildCachedCaption(video.title, cacheEntry?.fileSize)
+                        val caption = messageTemplateService.renderMessage("cached-video-caption.ftl", mapOf(
+                            "videoTitle" to video.title,
+                            "fileSize" to cacheEntry?.fileSize,
+                            "botUsername" to botConfig.username
+                        ))
 
                         val success = telegramSenderService.sendVideoByFileId(
                             chatId = chatId,
@@ -183,7 +152,8 @@ class TelegramBotController(
                             caption = caption
                         )
                         if (!success) {
-                            telegramSenderService.sendMessage(chatId, "❌ Ошибка отправки. Попробуйте еще раз.")
+                            val errorMsg = messageTemplateService.renderMessage("error-send-video.ftl")
+                            telegramSenderService.sendMessage(chatId, errorMsg)
                         }
                     } else {
                         // Нет в кэше - добавляем в очередь
@@ -197,61 +167,38 @@ class TelegramBotController(
                         val title = video.title ?: "Видео ${index + 1}"
                         title to "video:$cacheId:$index"
                     }
-                    telegramSenderService.sendMessageWithInlineKeyboard(
-                        chatId,
-                        "Найдено ${videos.size} видео. Выберите нужное:",
-                        buttons
-                    )
+                    val message = messageTemplateService.renderMessage("select-video.ftl", mapOf(
+                        "videoCount" to videos.size
+                    ))
+                    telegramSenderService.sendMessageWithInlineKeyboard(chatId, message, buttons)
                 }
             }
         } catch (e: RateLimitExceededException) {
             logger.warn { "Rate limit exceeded for user $chatId: ${e.message}" }
-            telegramSenderService.sendMessage(chatId, "⏱️ ${e.message}")
+            val message = messageTemplateService.renderMessage("error-rate-limit.ftl", mapOf("message" to e.message))
+            telegramSenderService.sendMessage(chatId, message)
         } catch (e: AuthenticationException) {
             logger.warn { "Authentication error for user $chatId: ${e.message}" }
-            telegramSenderService.sendMessage(
-                chatId,
-                "❌ Видео доступно только для авторизованных пользователей. " +
-                "Попробуйте позже."
-            )
+            val message = messageTemplateService.renderMessage("error-auth-required.ftl")
+            telegramSenderService.sendMessage(chatId, message)
         } catch (e: InvalidUrlException) {
             logger.warn { "Invalid URL from user $chatId: ${e.message}" }
-            telegramSenderService.sendMessage(chatId, "❌ ${e.message}")
+            val message = messageTemplateService.renderMessage("error-invalid-url.ftl", mapOf("message" to e.message))
+            telegramSenderService.sendMessage(chatId, message)
         } catch (e: VideoNotFoundException) {
             logger.warn { "No videos found for user $chatId: ${e.message}" }
-            telegramSenderService.sendMessage(chatId, "❌ ${e.message}")
+            val message = messageTemplateService.renderMessage("error-video-not-found.ftl", mapOf("message" to e.message))
+            telegramSenderService.sendMessage(chatId, message)
         } catch (e: Exception) {
             logger.error(e) { "Error processing URL for user $chatId" }
-            telegramSenderService.sendMessage(
-                chatId,
-                "❌ Произошла ошибка при обработке ссылки. Попробуйте позже."
-            )
+            val message = messageTemplateService.renderMessage("error-general.ftl")
+            telegramSenderService.sendMessage(chatId, message)
         }
     }
 
     private fun handleUnknownMessage(chatId: Long) {
-        telegramSenderService.sendMessage(
-            chatId,
-            "Я не понимаю это сообщение. Отправь мне ссылку на Pikabu или используй /help для справки."
-        )
-    }
-
-    /**
-     * Формирует caption для кэшированного видео
-     */
-    private fun buildCachedCaption(videoTitle: String?, fileSize: Long?): String {
-        return buildString {
-            if (videoTitle != null) {
-                append("📹 $videoTitle\n\n")
-            }
-            if (fileSize != null) {
-                val sizeMb = fileSize / (1024.0 * 1024.0)
-                append("✅ Загружено: %.2f МБ\n\n".format(sizeMb))
-            } else {
-                append("✅ Видео загружено\n\n")
-            }
-            append("Спасибо что воспользовались @${botConfig.username}")
-        }
+        val message = messageTemplateService.renderMessage("unknown-command.ftl")
+        telegramSenderService.sendMessage(chatId, message)
     }
 
     /**
@@ -265,7 +212,8 @@ class TelegramBotController(
 
             if (statusMessageId == null) {
                 logger.error { "Failed to send queue status message" }
-                telegramSenderService.sendMessage(chatId, "❌ Ошибка при добавлении в очередь")
+                val errorMsg = messageTemplateService.renderMessage("error-queue-add.ftl")
+                telegramSenderService.sendMessage(chatId, errorMsg)
                 return
             }
 
@@ -281,9 +229,9 @@ class TelegramBotController(
             val actualPosition = queueEntity.position ?: 1
             if (actualPosition != position) {
                 val updatedMessage = if (actualPosition == 1) {
-                    "✅ Видео добавлено в очередь.\n\n⏳ Загрузка начнётся сейчас..."
+                    messageTemplateService.renderMessage("queue-added-start.ftl")
                 } else {
-                    "✅ Видео добавлено в очередь.\n\n⏳ Позиция в очереди: $actualPosition"
+                    messageTemplateService.renderMessage("queue-added-position.ftl", mapOf("position" to actualPosition))
                 }
                 telegramSenderService.editMessageText(chatId, statusMessageId, updatedMessage)
             }
@@ -291,10 +239,8 @@ class TelegramBotController(
             logger.info { "Video added to queue for user $chatId (position: $actualPosition)" }
         } catch (e: Exception) {
             logger.error(e) { "Failed to add video to queue for user $chatId" }
-            telegramSenderService.sendMessage(
-                chatId,
-                "❌ Ошибка при добавлении видео в очередь. Попробуйте позже."
-            )
+            val errorMsg = messageTemplateService.renderMessage("error-queue-add.ftl")
+            telegramSenderService.sendMessage(chatId, errorMsg)
         }
     }
 }

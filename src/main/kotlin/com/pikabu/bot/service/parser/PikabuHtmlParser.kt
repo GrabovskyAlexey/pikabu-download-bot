@@ -42,15 +42,23 @@ class PikabuHtmlParser {
         val uniqueVideos = videos
             .distinctBy { it.url } // Убираем полные дубликаты
             .groupBy { getBaseFileName(it.url) } // Группируем по имени без расширения
-            .mapNotNull { (_, group) ->
+            .mapNotNull { (baseName, group) ->
+                if (group.size > 1) {
+                    logger.debug { "Found ${group.size} formats for '$baseName': ${group.map { it.format }}" }
+                }
                 // Если есть несколько форматов, предпочитаем MP4, затем WEBM
-                group.sortedByDescending {
+                val selected = group.sortedByDescending {
                     when (it.format) {
                         com.pikabu.bot.domain.model.VideoFormat.MP4 -> 2
                         com.pikabu.bot.domain.model.VideoFormat.WEBM -> 1
                         else -> 0
                     }
                 }.firstOrNull()
+
+                if (group.size > 1 && selected != null) {
+                    logger.debug { "Selected ${selected.format} format for '$baseName'" }
+                }
+                selected
             }
 
         logger.debug { "Parsed ${videos.size} raw video(s), filtered to ${uniqueVideos.size} unique" }
@@ -261,11 +269,17 @@ class PikabuHtmlParser {
 
     /**
      * Получает базовое имя файла без расширения (для группировки разных форматов)
+     * Нормализует имена файлов, убирая суффиксы форматов (m0, m1, s0, s1)
      */
     private fun getBaseFileName(url: String): String {
-        return url
+        val fileName = url
             .substringAfterLast('/')
             .substringBeforeLast('.')
+
+        // Pikabu добавляет суффиксы m0/m1/s0/s1 для разных форматов одного видео
+        // Например: ibfbcrni_s0f0d22m1_796x480 и ibfbcrni_s0f0d22m0_796x480
+        // Нормализуем, заменяя [ms][0-9] перед разрешением на общий паттерн
+        return fileName.replace(Regex("([ms])[0-9](_\\d+x\\d+)$"), "$2")
     }
 
     /**

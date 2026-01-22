@@ -73,6 +73,7 @@ app:
     user-id: ${ADMIN_USER_ID}
     enable-notifications: ${ADMIN_ENABLE_NOTIFICATIONS:true}
     enable-daily-digest: ${ADMIN_ENABLE_DAILY_DIGEST:false}
+    enable-weekly-digest: ${ADMIN_ENABLE_WEEKLY_DIGEST:false}
   max-concurrent-downloads: ${APP_MAX_CONCURRENT_DOWNLOADS:5}
   rate-limit:
     max-requests: ${APP_RATE_LIMIT_MAX_REQUESTS:1000}
