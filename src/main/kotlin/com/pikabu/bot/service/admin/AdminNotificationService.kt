@@ -3,6 +3,7 @@ package com.pikabu.bot.service.admin
 import com.pikabu.bot.config.AdminConfig
 import com.pikabu.bot.entity.ErrorLogEntity
 import com.pikabu.bot.service.telegram.TelegramSenderService
+import com.pikabu.bot.service.template.MessageTemplateService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.stereotype.Service
 
@@ -11,7 +12,8 @@ private val logger = KotlinLogging.logger {}
 @Service
 class AdminNotificationService(
     private val adminConfig: AdminConfig,
-    private val telegramSenderService: TelegramSenderService
+    private val telegramSenderService: TelegramSenderService,
+    private val messageTemplateService: MessageTemplateService
 ) {
 
     /**
@@ -25,23 +27,10 @@ class AdminNotificationService(
 
         if (errors.isEmpty()) return
 
-        val message = buildString {
-            append("⚠️ ПРЕДУПРЕЖДЕНИЕ: Обнаружены ошибки парсинга\n\n")
-            append("Количество ошибок: ${errors.size} за последние 10 минут\n\n")
-            append("Возможно изменилась структура страниц Pikabu.ru\n\n")
-
-            // Показываем последнюю ошибку
-            val lastError = errors.firstOrNull()
-            if (lastError != null) {
-                append("Последняя ошибка:\n")
-                append("📄 URL: ${lastError.pageUrl}\n")
-                append("💬 Сообщение: ${lastError.errorMessage}\n")
-                append("🕐 Время: ${lastError.occurredAt}\n")
-            }
-
-            append("\n")
-            append("Рекомендуется проверить PikabuHtmlParser и обновить стратегии парсинга.")
-        }
+        val message = messageTemplateService.renderNotification("parsing-errors.ftl", mapOf(
+            "errorCount" to errors.size,
+            "lastError" to errors.firstOrNull()
+        ))
 
         sendNotification(message)
     }
@@ -57,26 +46,10 @@ class AdminNotificationService(
 
         if (errors.isEmpty()) return
 
-        val message = buildString {
-            append("⚠️ ПРЕДУПРЕЖДЕНИЕ: Обнаружены ошибки загрузки\n\n")
-            append("Количество ошибок: ${errors.size} за последние 15 минут\n\n")
-            append("Возможные причины:\n")
-            append("• Проблемы с сетью\n")
-            append("• Блокировка со стороны Pikabu\n")
-            append("• Недоступность видео-серверов\n\n")
-
-            // Показываем последнюю ошибку
-            val lastError = errors.firstOrNull()
-            if (lastError != null) {
-                append("Последняя ошибка:\n")
-                append("📄 URL: ${lastError.pageUrl}\n")
-                append("💬 Сообщение: ${lastError.errorMessage}\n")
-                append("🕐 Время: ${lastError.occurredAt}\n")
-            }
-
-            append("\n")
-            append("Рекомендуется проверить доступность Pikabu и сетевое подключение.")
-        }
+        val message = messageTemplateService.renderNotification("download-errors.ftl", mapOf(
+            "errorCount" to errors.size,
+            "lastError" to errors.firstOrNull()
+        ))
 
         sendNotification(message)
     }
@@ -90,21 +63,9 @@ class AdminNotificationService(
             return
         }
 
-        val message = buildString {
-            append("🚨 КРИТИЧЕСКАЯ ОШИБКА\n\n")
-            append("💬 Сообщение: ${error.errorMessage}\n")
-            append("🕐 Время: ${error.occurredAt}\n\n")
-
-            if (error.pageUrl != null) {
-                append("📄 URL: ${error.pageUrl}\n\n")
-            }
-
-            if (error.stackTrace != null && error.stackTrace.length < 500) {
-                append("Stack trace:\n```\n${error.stackTrace}\n```\n\n")
-            }
-
-            append("Требуется немедленное внимание!")
-        }
+        val message = messageTemplateService.renderNotification("system-error.ftl", mapOf(
+            "error" to error
+        ))
 
         sendNotification(message)
     }
@@ -118,16 +79,25 @@ class AdminNotificationService(
             return
         }
 
-        val message = buildString {
-            append("📊 Дневная статистика\n\n")
-            append("✅ Загружено видео: ${stats.successfulDownloads}\n")
-            append("❌ Ошибок: ${stats.totalErrors}\n")
-            append("   • Парсинг: ${stats.parsingErrors}\n")
-            append("   • Загрузка: ${stats.downloadErrors}\n")
-            append("   • Система: ${stats.systemErrors}\n\n")
-            append("👥 Активных пользователей: ${stats.activeUsers}\n")
-            append("📦 Всего в очереди: ${stats.queuedRequests}\n")
+        val message = messageTemplateService.renderNotification("daily-digest.ftl", mapOf(
+            "stats" to stats
+        ))
+
+        sendNotification(message)
+    }
+
+    /**
+     * Отправляет недельный дайджест статистики
+     */
+    fun sendWeeklyDigest(stats: WeeklyStats) {
+        if (!adminConfig.enableWeeklyDigest || adminConfig.userId == 0L) {
+            logger.debug { "Weekly digest disabled or admin ID not configured" }
+            return
         }
+
+        val message = messageTemplateService.renderNotification("weekly-digest.ftl", mapOf(
+            "stats" to stats
+        ))
 
         sendNotification(message)
     }
@@ -141,25 +111,10 @@ class AdminNotificationService(
             return
         }
 
-        val message = buildString {
-            append("🔒 ОШИБКА АВТОРИЗАЦИИ\n\n")
-            append("HTTP Status: $statusCode\n")
-            append("📄 URL: $url\n\n")
-            append("Возможные причины:\n")
-            when (statusCode) {
-                401 -> {
-                    append("• Cookies истекли или невалидны\n")
-                    append("• Требуется повторная авторизация\n\n")
-                    append("Рекомендация: Обновите cookies через /update_auth")
-                }
-                403 -> {
-                    append("• Доступ запрещён\n")
-                    append("• Контент может быть приватным\n")
-                    append("• Cookies могут быть устаревшими\n\n")
-                    append("Рекомендация: Проверьте cookies через /update_auth")
-                }
-            }
-        }
+        val message = messageTemplateService.renderNotification("authentication-error.ftl", mapOf(
+            "statusCode" to statusCode,
+            "url" to url
+        ))
 
         sendNotification(message)
     }
@@ -174,24 +129,9 @@ class AdminNotificationService(
             return
         }
 
-        val message = buildString {
-            append("🔑 COOKIES ПРОТУХЛИ\n\n")
-            append("Обнаружен контент, требующий авторизации:\n")
-            append("📄 URL: $url\n\n")
-            append("Признаки:\n")
-            append("• Страница загрузилась (HTTP 200)\n")
-            append("• Но контент показывает призыв авторизоваться\n")
-            append("• userID: 0 (неавторизованный пользователь)\n")
-            append("• Возможно, это NSFW/18+ контент\n\n")
-            append("⚠️ Действие требуется:\n")
-            append("Обновите cookies Pikabu через команду /update_auth\n\n")
-            append("Как получить cookies:\n")
-            append("1. Откройте pikabu.ru в браузере\n")
-            append("2. Авторизуйтесь\n")
-            append("3. F12 → Application → Cookies\n")
-            append("4. Скопируйте PHPSESS\n")
-            append("5. Отправьте мне через /update_auth")
-        }
+        val message = messageTemplateService.renderNotification("cookies-expired.ftl", mapOf(
+            "url" to url
+        ))
 
         sendNotification(message)
     }
@@ -222,4 +162,23 @@ data class DailyStats(
     val systemErrors: Int,
     val activeUsers: Int,
     val queuedRequests: Int
+)
+
+data class WeeklyStats(
+    val successfulDownloads: Int,
+    val totalErrors: Int,
+    val parsingErrors: Int,
+    val downloadErrors: Int,
+    val systemErrors: Int,
+    val activeUsers: Int,
+    val totalUsers: Int,
+    val queuedRequests: Int,
+    val avgDownloadsPerDay: Double,
+    val topVideos: List<PopularVideo>
+)
+
+data class PopularVideo(
+    val videoUrl: String,
+    val videoTitle: String?,
+    val downloadCount: Long
 )

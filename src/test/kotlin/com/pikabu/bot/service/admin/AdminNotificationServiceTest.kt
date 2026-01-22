@@ -4,6 +4,7 @@ import com.pikabu.bot.config.AdminConfig
 import com.pikabu.bot.domain.model.ErrorType
 import com.pikabu.bot.entity.ErrorLogEntity
 import com.pikabu.bot.service.telegram.TelegramSenderService
+import com.pikabu.bot.service.template.MessageTemplateService
 import io.kotest.core.spec.style.FunSpec
 import io.mockk.*
 import java.time.LocalDateTime
@@ -12,16 +13,48 @@ class AdminNotificationServiceTest : FunSpec({
 
     lateinit var adminConfig: AdminConfig
     lateinit var telegramSenderService: TelegramSenderService
+    lateinit var messageTemplateService: MessageTemplateService
     lateinit var service: AdminNotificationService
 
     beforeEach {
         adminConfig = AdminConfig(
             userId = 12345L,
             enableNotifications = true,
-            enableDailyDigest = true
+            enableDailyDigest = true,
+            enableWeeklyDigest = true
         )
         telegramSenderService = mockk(relaxed = true)
-        service = AdminNotificationService(adminConfig, telegramSenderService)
+        messageTemplateService = mockk(relaxed = true)
+
+        // Mock template rendering
+        every { messageTemplateService.renderNotification(any(), any()) } answers {
+            val templateName = firstArg<String>()
+            val data = secondArg<Map<String, Any?>>()
+
+            when {
+                templateName.contains("parsing-errors") -> {
+                    val lastError = data["lastError"] as? ErrorLogEntity
+                    "ПРЕДУПРЕЖДЕНИЕ: Обнаружены ошибки парсинга\nКоличество ошибок: ${data["errorCount"]}\n${lastError?.pageUrl ?: ""}"
+                }
+                templateName.contains("download-errors") -> "ПРЕДУПРЕЖДЕНИЕ: Обнаружены ошибки загрузки\nКоличество ошибок: ${data["errorCount"]}\n${(data["lastError"] as? ErrorLogEntity)?.errorMessage}"
+                templateName.contains("system-error") -> {
+                    val error = data["error"] as? ErrorLogEntity
+                    val trace = if (error?.stackTrace != null && error.stackTrace.length < 500) error.stackTrace else ""
+                    "КРИТИЧЕСКАЯ ОШИБКА\n${error?.errorMessage}\n$trace\nТребуется немедленное внимание!"
+                }
+                templateName.contains("daily-digest") -> {
+                    val stats = data["stats"] as DailyStats
+                    "Дневная статистика\nЗагружено видео: ${stats.successfulDownloads}\nОшибок: ${stats.totalErrors}\nАктивных пользователей: ${stats.activeUsers}"
+                }
+                templateName.contains("weekly-digest") -> {
+                    val stats = data["stats"] as WeeklyStats
+                    "Недельная статистика\nЗагружено видео: ${stats.successfulDownloads}\nАктивных за неделю: ${stats.activeUsers}"
+                }
+                else -> "Test message"
+            }
+        }
+
+        service = AdminNotificationService(adminConfig, telegramSenderService, messageTemplateService)
     }
 
     afterEach {
@@ -56,8 +89,8 @@ class AdminNotificationServiceTest : FunSpec({
         }
 
         test("should not send notification when notifications disabled") {
-            adminConfig = AdminConfig(userId = 12345L, enableNotifications = false, enableDailyDigest = false)
-            service = AdminNotificationService(adminConfig, telegramSenderService)
+            adminConfig = AdminConfig(userId = 12345L, enableNotifications = false, enableDailyDigest = false, enableWeeklyDigest = false)
+            service = AdminNotificationService(adminConfig, telegramSenderService, messageTemplateService)
 
             val errors = listOf(
                 ErrorLogEntity(
@@ -75,8 +108,8 @@ class AdminNotificationServiceTest : FunSpec({
         }
 
         test("should not send notification when admin ID not configured") {
-            adminConfig = AdminConfig(userId = 0L, enableNotifications = true, enableDailyDigest = false)
-            service = AdminNotificationService(adminConfig, telegramSenderService)
+            adminConfig = AdminConfig(userId = 0L, enableNotifications = true, enableDailyDigest = false, enableWeeklyDigest = false)
+            service = AdminNotificationService(adminConfig, telegramSenderService, messageTemplateService)
 
             val errors = listOf(
                 ErrorLogEntity(
@@ -202,8 +235,8 @@ class AdminNotificationServiceTest : FunSpec({
         }
 
         test("should not send digest when disabled") {
-            adminConfig = AdminConfig(userId = 12345L, enableNotifications = true, enableDailyDigest = false)
-            service = AdminNotificationService(adminConfig, telegramSenderService)
+            adminConfig = AdminConfig(userId = 12345L, enableNotifications = true, enableDailyDigest = false, enableWeeklyDigest = false)
+            service = AdminNotificationService(adminConfig, telegramSenderService, messageTemplateService)
 
             val stats = DailyStats(
                 successfulDownloads = 100,

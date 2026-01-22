@@ -6,5 +6,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class AdminConfig(
     var userId: Long = 0,
     var enableNotifications: Boolean = true,
-    var enableDailyDigest: Boolean = false
+    var enableDailyDigest: Boolean = false,
+    var enableWeeklyDigest: Boolean = false
 )
