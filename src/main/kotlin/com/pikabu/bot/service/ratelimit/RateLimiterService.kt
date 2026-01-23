@@ -4,6 +4,7 @@ import com.pikabu.bot.config.RateLimiterConfig
 import com.pikabu.bot.domain.exception.RateLimitExceededException
 import com.pikabu.bot.entity.RateLimitEntity
 import com.pikabu.bot.repository.RateLimitRepository
+import com.pikabu.bot.service.metrics.MetricsService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -15,7 +16,7 @@ private val logger = KotlinLogging.logger {}
 class RateLimiterService(
     private val rateLimitRepository: RateLimitRepository,
     private val rateLimiterConfig: RateLimiterConfig,
-    private val metricsService: com.pikabu.bot.service.metrics.MetricsService
+    private val metricsService: MetricsService
 ) {
 
     /**

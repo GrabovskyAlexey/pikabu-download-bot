@@ -6,6 +6,7 @@ import com.pikabu.bot.domain.model.ErrorType
 import com.pikabu.bot.domain.model.VideoInfo
 import com.pikabu.bot.service.admin.AdminNotificationService
 import com.pikabu.bot.service.admin.ErrorMonitoringService
+import com.pikabu.bot.service.metrics.MetricsService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.*
 import io.ktor.client.request.*
@@ -21,7 +22,7 @@ class VideoParserService(
     private val pikabuHtmlParser: PikabuHtmlParser,
     private val errorMonitoringService: ErrorMonitoringService,
     private val adminNotificationService: AdminNotificationService,
-    private val metricsService: com.pikabu.bot.service.metrics.MetricsService
+    private val metricsService: MetricsService
 ) {
 
     companion object {

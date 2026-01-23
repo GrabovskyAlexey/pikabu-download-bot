@@ -1,7 +1,9 @@
 package com.pikabu.bot.service.download
 
+import com.pikabu.bot.config.TelegramBotConfig
 import com.pikabu.bot.domain.exception.DownloadException
 import com.pikabu.bot.service.telegram.TelegramSenderService
+import com.pikabu.bot.service.template.MessageTemplateService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,7 +18,8 @@ private val logger = KotlinLogging.logger {}
 class StreamingDownloader(
     private val videoDownloadService: VideoDownloadService,
     private val telegramSenderService: TelegramSenderService,
-    private val botConfig: com.pikabu.bot.config.TelegramBotConfig
+    private val messageTemplateService: MessageTemplateService,
+    private val botConfig: TelegramBotConfig
 ) {
 
     /**
@@ -95,19 +98,11 @@ class StreamingDownloader(
     /**
      * Формирует caption для видео
      */
-    private fun buildCaption(videoTitle: String?, downloadResult: com.pikabu.bot.service.download.DownloadResult): String {
-        val sizeMb = downloadResult.sizeBytes / (1024.0 * 1024.0)
-        val durationSec = downloadResult.durationMs / 1000.0
-
-        return buildString {
-            if (videoTitle != null) {
-                append("📹 $videoTitle\n\n")
-            }
-            append("✅ Загружено: %.2f МБ".format(sizeMb))
-            if (durationSec > 1) {
-                append(" (%.1f сек)".format(durationSec))
-            }
-            append("\n\nСпасибо что воспользовались @${botConfig.username}")
-        }
+    private fun buildCaption(videoTitle: String?, downloadResult: DownloadResult): String {
+        return messageTemplateService.renderMessage("cached-video-caption.ftl", mapOf(
+            "videoTitle" to videoTitle,
+            "fileSize" to downloadResult.sizeBytes,
+            "botUsername" to botConfig.username
+        ))
     }
 }

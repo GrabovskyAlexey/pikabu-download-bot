@@ -1,11 +1,20 @@
 package com.pikabu.bot.service.download
 
+import com.pikabu.bot.config.TelegramBotConfig
 import com.pikabu.bot.domain.exception.DownloadException
 import com.pikabu.bot.domain.model.QueueStatus
+import com.pikabu.bot.domain.model.VideoPlatform
+import com.pikabu.bot.domain.model.VideoPlatform.PIKABU
+import com.pikabu.bot.domain.model.VideoPlatform.RUTUBE
+import com.pikabu.bot.domain.model.VideoPlatform.VKVIDEO
+import com.pikabu.bot.domain.model.VideoPlatform.YOUTUBE
 import com.pikabu.bot.entity.DownloadQueueEntity
 import com.pikabu.bot.service.cache.VideoCacheService
+import com.pikabu.bot.service.metrics.MetricsService
+import com.pikabu.bot.service.parser.VideoParserService
 import com.pikabu.bot.service.queue.QueueService
 import com.pikabu.bot.service.telegram.TelegramSenderService
+import com.pikabu.bot.service.template.MessageTemplateService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.stereotype.Service
 
@@ -15,12 +24,13 @@ private val logger = KotlinLogging.logger {}
 class DownloadOrchestrator(
     private val streamingDownloader: StreamingDownloader,
     private val externalVideoDownloadService: ExternalVideoDownloadService,
-    private val videoParserService: com.pikabu.bot.service.parser.VideoParserService,
+    private val videoParserService: VideoParserService,
     private val queueService: QueueService,
     private val telegramSenderService: TelegramSenderService,
     private val videoCacheService: VideoCacheService,
-    private val botConfig: com.pikabu.bot.config.TelegramBotConfig,
-    private val metricsService: com.pikabu.bot.service.metrics.MetricsService
+    private val botConfig: TelegramBotConfig,
+    private val metricsService: MetricsService,
+    private val messageTemplateService: MessageTemplateService,
 ) {
 
     /**
@@ -52,7 +62,7 @@ class DownloadOrchestrator(
 
                 // Формируем caption с размером из кэша
                 val cacheEntry = videoCacheService.getCacheEntry(queueEntity.videoUrl)
-                val caption = buildCachedVideoCaption(queueEntity.videoTitle, cacheEntry?.fileSize)
+                val caption = buildVideoCaption(queueEntity.videoTitle, cacheEntry?.fileSize)
 
                 success = telegramSenderService.sendVideoByFileId(
                     chatId = queueEntity.userId,
@@ -233,16 +243,16 @@ class DownloadOrchestrator(
     /**
      * Определяет платформу видео по URL
      */
-    private fun detectPlatformFromUrl(url: String): com.pikabu.bot.domain.model.VideoPlatform {
+    private fun detectPlatformFromUrl(url: String): VideoPlatform {
         return when {
             url.contains("youtube.com") || url.contains("youtu.be") ->
-                com.pikabu.bot.domain.model.VideoPlatform.YOUTUBE
+                YOUTUBE
             url.contains("rutube.ru") ->
-                com.pikabu.bot.domain.model.VideoPlatform.RUTUBE
+                RUTUBE
             url.contains("vk.com") || url.contains("vk.ru") ->
-                com.pikabu.bot.domain.model.VideoPlatform.VKVIDEO
+                VKVIDEO
             else ->
-                com.pikabu.bot.domain.model.VideoPlatform.PIKABU
+                PIKABU
         }
     }
 
@@ -253,7 +263,7 @@ class DownloadOrchestrator(
         videoUrl: String,
         chatId: Long,
         videoTitle: String?,
-        platform: com.pikabu.bot.domain.model.VideoPlatform
+        platform: VideoPlatform
     ): StreamingDownloader.SendResult {
         val tempFile = kotlin.io.path.createTempFile("pikabu_external", ".mp4").toFile()
 
@@ -291,32 +301,12 @@ class DownloadOrchestrator(
     /**
      * Формирует caption для видео
      */
-    private fun buildVideoCaption(videoTitle: String?, fileSize: Long): String {
-        return buildString {
-            if (videoTitle != null) {
-                append("📹 $videoTitle\n\n")
-            }
-            val sizeMb = fileSize / (1024.0 * 1024.0)
-            append("✅ Загружено: %.2f МБ\n\n".format(sizeMb))
-            append("Спасибо что воспользовались @${botConfig.username}")
-        }
-    }
-
-    /**
-     * Формирует caption для кэшированного видео
-     */
-    private fun buildCachedVideoCaption(videoTitle: String?, fileSize: Long?): String {
-        return buildString {
-            if (videoTitle != null) {
-                append("📹 $videoTitle\n\n")
-            }
-            if (fileSize != null) {
-                val sizeMb = fileSize / (1024.0 * 1024.0)
-                append("✅ Загружено: %.2f МБ\n\n".format(sizeMb))
-            } else {
-                append("✅ Видео загружено\n\n")
-            }
-            append("Спасибо что воспользовались @${botConfig.username}")
-        }
+    private fun buildVideoCaption(videoTitle: String?, fileSize: Long?): String {
+        val nonNullableSize = fileSize ?: 0
+        return messageTemplateService.renderMessage("cached-video-caption.ftl", mapOf(
+            "videoTitle" to videoTitle,
+            "fileSize" to nonNullableSize,
+            "botUsername" to botConfig.username
+        ))
     }
 }

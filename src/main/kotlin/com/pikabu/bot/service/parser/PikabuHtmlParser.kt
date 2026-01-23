@@ -26,6 +26,10 @@ class PikabuHtmlParser {
 
         logger.debug { "Starting to parse videos from HTML (${html.length} chars)" }
 
+        // Парсим заголовок страницы как fallback для видео без title
+        val pageTitle = parsePageTitle(document)
+        logger.debug { "Page title: $pageTitle" }
+
         // Стратегия 1: HTML5 <video> и <source> теги
         videos.addAll(parseVideoTags(document, pageUrl))
 
@@ -49,8 +53,8 @@ class PikabuHtmlParser {
                 // Если есть несколько форматов, предпочитаем MP4, затем WEBM
                 val selected = group.sortedByDescending {
                     when (it.format) {
-                        com.pikabu.bot.domain.model.VideoFormat.MP4 -> 2
-                        com.pikabu.bot.domain.model.VideoFormat.WEBM -> 1
+                        VideoFormat.MP4 -> 2
+                        VideoFormat.WEBM -> 1
                         else -> 0
                     }
                 }.firstOrNull()
@@ -58,7 +62,13 @@ class PikabuHtmlParser {
                 if (group.size > 1 && selected != null) {
                     logger.debug { "Selected ${selected.format} format for '$baseName'" }
                 }
-                selected
+
+                // Если у видео нет title, используем заголовок страницы
+                if (selected != null && selected.title.isNullOrBlank() && !pageTitle.isNullOrBlank()) {
+                    selected.copy(title = pageTitle)
+                } else {
+                    selected
+                }
             }
 
         logger.debug { "Parsed ${videos.size} raw video(s), filtered to ${uniqueVideos.size} unique" }
@@ -108,6 +118,67 @@ class PikabuHtmlParser {
         }
 
         return isAuthRequired
+    }
+
+    /**
+     * Извлекает заголовок страницы Pikabu
+     * Пробует несколько источников в порядке приоритета
+     */
+    private fun parsePageTitle(document: Document): String? {
+        logger.debug { "Parsing page title" }
+
+        // Приоритет 1: Open Graph title (og:title)
+        document.select("meta[property=og:title]").firstOrNull()?.attr("content")?.let { ogTitle ->
+            if (ogTitle.isNotBlank()) {
+                logger.debug { "Found title in og:title: $ogTitle" }
+                return ogTitle.trim()
+            }
+        }
+
+        // Приоритет 2: Заголовок поста (h1 с классом story__title или аналогичным)
+        val storyTitleSelectors = listOf(
+            "h1.story__title",
+            "h1[class*=story]",
+            "h1[class*=title]",
+            ".story__title",
+            ".article__title"
+        )
+
+        for (selector in storyTitleSelectors) {
+            document.select(selector).firstOrNull()?.text()?.let { title ->
+                if (title.isNotBlank()) {
+                    logger.debug { "Found title in selector '$selector': $title" }
+                    return title.trim()
+                }
+            }
+        }
+
+        // Приоритет 3: Twitter title
+        document.select("meta[name=twitter:title]").firstOrNull()?.attr("content")?.let { twitterTitle ->
+            if (twitterTitle.isNotBlank()) {
+                logger.debug { "Found title in twitter:title: $twitterTitle" }
+                return twitterTitle.trim()
+            }
+        }
+
+        // Приоритет 4: <title> тег страницы (обычно содержит " | Пикабу" в конце)
+        document.select("title").firstOrNull()?.text()?.let { pageTitle ->
+            if (pageTitle.isNotBlank()) {
+                // Убираем " | Пикабу" и подобные суффиксы
+                val cleanTitle = pageTitle
+                    .replace(Regex("""\s*[|•]\s*Пикабу.*$""", RegexOption.IGNORE_CASE), "")
+                    .replace(Regex("""\s*[|•]\s*Pikabu.*$""", RegexOption.IGNORE_CASE), "")
+                    .trim()
+
+                if (cleanTitle.isNotBlank()) {
+                    logger.debug { "Found title in <title> tag (cleaned): $cleanTitle" }
+                    return cleanTitle
+                }
+            }
+        }
+
+        logger.debug { "No page title found" }
+        return null
     }
 
     /**
@@ -259,7 +330,7 @@ class PikabuHtmlParser {
     /**
      * Определяет формат видео по расширению
      */
-    private fun getVideoFormat(url: String): com.pikabu.bot.domain.model.VideoFormat {
+    private fun getVideoFormat(url: String): VideoFormat {
         val extension = url.substringAfterLast('.', "").lowercase()
             .substringBefore('?')
             .substringBefore('#')
