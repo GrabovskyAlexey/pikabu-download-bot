@@ -3,6 +3,7 @@ package com.pikabu.bot.service.download
 import com.pikabu.bot.domain.exception.DownloadException
 import com.pikabu.bot.domain.model.ErrorType
 import com.pikabu.bot.service.admin.ErrorMonitoringService
+import com.pikabu.bot.service.metrics.MetricsService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.*
 import io.ktor.client.request.*
@@ -21,7 +22,7 @@ private val logger = KotlinLogging.logger {}
 class VideoDownloadService(
     private val httpClient: HttpClient,
     private val errorMonitoringService: ErrorMonitoringService,
-    private val metricsService: com.pikabu.bot.service.metrics.MetricsService,
+    private val metricsService: MetricsService,
     @Value("\${app.download.max-size-mb:500}")
     private val maxSizeMb: Int,
     @Value("\${app.download.timeout-minutes:5}")

@@ -151,7 +151,10 @@ class TelegramBotController(
                             fileId = cachedFileId,
                             caption = caption
                         )
-                        if (!success) {
+                        if (success) {
+                            // Записываем в историю для статистики популярности
+                            queueService.recordCachedDownload(chatId, video.url, video.title)
+                        } else {
                             val errorMsg = messageTemplateService.renderMessage("error-send-video.ftl")
                             telegramSenderService.sendMessage(chatId, errorMsg)
                         }

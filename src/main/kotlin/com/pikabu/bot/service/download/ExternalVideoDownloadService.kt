@@ -7,7 +7,6 @@ import com.pikabu.bot.service.admin.ErrorMonitoringService
 import com.pikabu.bot.service.metrics.MetricsService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.springframework.beans.factory.annotation.Value

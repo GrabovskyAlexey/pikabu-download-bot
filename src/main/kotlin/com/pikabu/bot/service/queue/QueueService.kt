@@ -5,6 +5,7 @@ import com.pikabu.bot.entity.DownloadHistoryEntity
 import com.pikabu.bot.entity.DownloadQueueEntity
 import com.pikabu.bot.repository.DownloadHistoryRepository
 import com.pikabu.bot.repository.DownloadQueueRepository
+import com.pikabu.bot.service.metrics.MetricsService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -16,7 +17,7 @@ private val logger = KotlinLogging.logger {}
 class QueueService(
     private val downloadQueueRepository: DownloadQueueRepository,
     private val downloadHistoryRepository: DownloadHistoryRepository,
-    private val metricsService: com.pikabu.bot.service.metrics.MetricsService
+    private val metricsService: MetricsService
 ) {
 
     /**
@@ -123,6 +124,24 @@ class QueueService(
 
         // Обновляем метрику размера очереди
         updateQueueSizeMetric()
+    }
+
+    /**
+     * Записывает в историю успешную отправку кэшированного видео
+     * Используется для подсчета статистики популярности видео
+     */
+    fun recordCachedDownload(userId: Long, videoUrl: String, videoTitle: String?) {
+        val historyEntity = DownloadHistoryEntity(
+            userId = userId,
+            videoUrl = videoUrl,
+            videoTitle = videoTitle,
+            status = QueueStatus.COMPLETED.name,
+            createdAt = LocalDateTime.now(),
+            completedAt = LocalDateTime.now()
+        )
+
+        downloadHistoryRepository.save(historyEntity)
+        logger.debug { "Recorded cached download: user=$userId, video=$videoUrl" }
     }
 
     /**
