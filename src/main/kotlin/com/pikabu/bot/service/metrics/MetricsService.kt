@@ -33,11 +33,6 @@ class MetricsService(private val meterRegistry: MeterRegistry) {
         .description("Number of cache misses for video file_id")
         .register(meterRegistry)
 
-    // Счетчик пользователей
-    private val uniqueUsersCounter: Counter = Counter.builder("bot.users.unique")
-        .description("Total number of unique users who used the bot")
-        .register(meterRegistry)
-
     // Счетчики ошибок по типам
     private val parsingErrorsCounter: Counter = Counter.builder("bot.errors.parsing")
         .description("Number of parsing errors")
@@ -103,13 +98,6 @@ class MetricsService(private val meterRegistry: MeterRegistry) {
      */
     fun recordCacheMiss() {
         cacheMissesCounter.increment()
-    }
-
-    /**
-     * Записывает нового уникального пользователя
-     */
-    fun recordUniqueUser() {
-        uniqueUsersCounter.increment()
     }
 
     /**
