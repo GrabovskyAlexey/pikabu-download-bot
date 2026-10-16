@@ -31,6 +31,9 @@ interface DownloadHistoryRepository : JpaRepository<DownloadHistoryEntity, Long>
     @Query("SELECT COUNT(DISTINCT e.userId) FROM DownloadHistoryEntity e")
     fun countDistinctUsers(): Long
 
+    @Query("SELECT COUNT(DISTINCT e.userId) FROM DownloadHistoryEntity e WHERE e.completedAt >= :since")
+    fun countDistinctUsersSince(since: LocalDateTime): Long
+
     fun findTopByOrderByCreatedAtDesc(): DownloadHistoryEntity?
 
     @Query(
